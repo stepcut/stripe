@@ -1,0 +1,19 @@
+Name:                stripe
+Version:             0.1
+License:             BSD3
+License-file:        LICENSE
+Author:              Jeremy Shaw
+Stability:           Experimental
+Category:            Web
+Build-type:          Simple
+Cabal-version:       >=1.6
+
+Library
+  Exposed-modules:     Stripe
+  Build-Depends:       base,
+                       aeson == 0.6.*,
+                       bytestring == 0.9.*,
+                       conduit == 0.4.*,
+                       http-conduit == 1.4.*,
+                       safecopy == 0.6.*,
+                       text == 0.11.*
