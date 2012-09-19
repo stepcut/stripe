@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveDataTypeable, GeneralizedNewtypeDeriving, OverloadedStrings, TemplateHaskell #-}
+{-# LANGUAGE DeriveDataTypeable, FlexibleContexts, GeneralizedNewtypeDeriving, OverloadedStrings, TemplateHaskell, TypeFamilies #-}
 module Stripe where
 
 import Control.Applicative ((<$>), (<*>))
@@ -9,8 +9,12 @@ import Data.Conduit
 import Data.Data     (Data, Typeable)
 import Data.Maybe
 import Data.SafeCopy (SafeCopy, base, deriveSafeCopy)
+import Data.String   (fromString)
 import Data.Text     (Text)
+import qualified Data.Text.Encoding as Text
+import Control.Monad.Trans.Control
 import Network.HTTP.Conduit
+import qualified Network.HTTP.Types as W
 
 newtype ApiKey = ApiKey { unApiKey :: ByteString }
     deriving (Eq, Ord, Read, Show, Data, Typeable, SafeCopy)
@@ -44,7 +48,7 @@ data StripeError = StripeError
 $(deriveSafeCopy 0 'base ''StripeError)
 
 newtype CustomerId = CustomerId { unCustomerId :: Text }
-    deriving (Eq, Ord, Read, Show, Data, Typeable, SafeCopy)
+    deriving (Eq, Ord, Read, Show, Data, Typeable, SafeCopy, FromJSON)
 
 data Check
     = Pass
@@ -102,22 +106,107 @@ instance FromJSON Card where
              <*> obj .: "cvc_check"
              <*> obj .: "name"
     parseJSON _ = mzero
-             
 
+type Cents = Integer
 
-{-
-data Charges = Charges
-    { 
+data FeeDetail = FeeDetail
+    { feeDetailAmount      :: Cents
+    , feeDetailCurrency    :: Text
+    , feeDetailType        :: Text
+    , feeDetailApplication :: Text
+    , feeDetailDescription :: Text
     }
--}
+    deriving (Eq, Ord, Read, Show, Data, Typeable)
+$(deriveSafeCopy 0 'base ''FeeDetail)
+
+instance FromJSON FeeDetail where
+    parseJSON (Object obj) =
+        FeeDetail <$> obj .: "amount"
+                  <*> obj .: "currency"
+                  <*> obj .: "type"
+                  <*> obj .: "application"
+                  <*> obj .: "description"
+    parseJSON _ = mzero
+
+type Timestamp = Integer    
+             
+data Charge = Charge
+    { chargeId             :: Text
+    , chargeLivemode       :: Bool
+    , chargeAmount         :: Cents
+    , chargeCard           :: Card
+    , chargeTimestamp      :: Timestamp
+    , chargeCurrency       :: Text
+    , chargeDisputed       :: Bool
+    , chargeFee            :: Cents
+    , chargeFeeDetails     :: [FeeDetail]
+    , chargePaid           :: Bool
+    , chargeRefunded       :: Bool -- false for partial refund
+    , chargeAmountRefunded :: Cents
+    , chargeCustomer       :: CustomerId
+    , chargeDescription    :: Text
+    , chargeFailureMessage :: Text
+    , chargeInvoice              :: Text
+    }
+    deriving (Eq, Ord, Read, Show, Data, Typeable)
+$(deriveSafeCopy 0 'base ''Charge)
+
+instance FromJSON Charge where
+    parseJSON (Object obj) =
+        Charge <$> obj .: "id"
+               <*> obj .: "livemode"
+               <*> obj .: "amount"
+               <*> obj .: "card"
+               <*> obj .: "created"
+               <*> obj .: "currency"
+               <*> obj .: "disputed"
+               <*> obj .: "fee"
+               <*> obj .: "fee_details"
+               <*> obj .: "paid"
+               <*> obj .: "refunded"
+               <*> obj .: "amount_refunded"
+               <*> obj .: "customer"
+               <*> obj .: "description"
+               <*> obj .: "failure_message"
+               <*> obj .: "invoice"
+    parseJSON _ = mzero
+
+data Charges = Charges
+    { chargesCount :: Integer
+    , chargesData  :: [Charge]
+    }
+    deriving (Eq, Ord, Read, Show, Data, Typeable)
+$(deriveSafeCopy 0 'base ''Charges)
+
+instance FromJSON Charges where
+    parseJSON (Object obj) =
+        Charges <$> obj .: "count"
+                <*> obj .: "data"
+    parseJSON _ = mzero
+
 type Count = Integer
 type Offset = Integer
 
-charges :: Maybe Count -> Maybe Offset -> Maybe CustomerId -> Request m
-charges mCount mOffset mCustomerId =
-    fromJust $ parseUrl "https://api.stripe.com/v1/charges"
+newtype StripeReq m ret = StripeReq { unSR :: Request m }
 
--- stripe :: ApiKey -> Request m -> IO 
-stripe (ApiKey k) req manager =
+charges :: Maybe Count -> Maybe Offset -> Maybe CustomerId -> StripeReq m Charges
+charges mCount mOffset mCustomerId =
+    let (Just req) = parseUrl "https://api.stripe.com/v1/charges"
+    in StripeReq $ req { queryString = W.renderSimpleQuery False params  }
+    where
+      params = catMaybes [ mbParam "count" mCount (fromString . show)
+                         , mbParam "offset" mOffset (fromString . show)
+                         , mbParam "customer" mCustomerId (Text.encodeUtf8 . unCustomerId)
+                         ]
+      mbParam :: ByteString -> Maybe a -> (a -> ByteString) -> Maybe W.SimpleQueryItem
+      mbParam _ Nothing _ = Nothing
+      mbParam name (Just v) show' = Just (name, show' v)
+
+
+stripe :: ( MonadResource m
+          , MonadBaseControl IO m
+          , FromJSON a
+          ) => ApiKey -> StripeReq m a -> Manager -> m (Maybe a)
+stripe (ApiKey k) (StripeReq req) manager =
     do res <- httpLbs (applyBasicAuth k "" req) manager
-       return res
+       return $ decode' (responseBody res)

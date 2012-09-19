@@ -9,6 +9,6 @@ testKey = ApiKey "sk_TZjqQX1iWkWgMOuJivz4uElPsAkoI"
 
 main :: IO ()
 main =
-    do res <- withManager $ stripe testKey charges
+    do res <- withManager $ stripe testKey (charges Nothing Nothing Nothing)
        print res
 
