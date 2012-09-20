@@ -3,6 +3,7 @@ module Stripe where
 
 import Control.Applicative ((<$>), (<*>))
 import Control.Monad        (mzero)
+import Control.Monad.Trans (liftIO)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Lazy as BL
 import Data.Aeson
@@ -88,17 +89,17 @@ data Card = Card
     , cardFingerprint    :: Text
     , cardLast4          :: Text
     , cardType           :: Text
-    , cardAddrCity       :: Text
-    , cardAddrCountry    :: Text
-    , cardAddrLine1      :: Text
-    , cardAddrLine1Check :: Check
-    , cardAddrLine2      :: Text
-    , cardAddrState      :: Text
-    , cardAddrZip        :: Text
-    , cardAddrZipCheck   :: Check
-    , cardCountry        :: Text
-    , cardCvcCheck       :: Check
-    , cardName           :: Text
+    , cardAddrCity       :: Maybe Text
+    , cardAddrCountry    :: Maybe Text
+    , cardAddrLine1      :: Maybe Text
+    , cardAddrLine1Check :: Maybe Check
+    , cardAddrLine2      :: Maybe Text
+    , cardAddrState      :: Maybe Text
+    , cardAddrZip        :: Maybe Text
+    , cardAddrZipCheck   :: Maybe Check
+    , cardCountry        :: Maybe Text
+    , cardCvcCheck       :: Maybe Check
+    , cardName           :: Maybe Text
     }
     deriving (Eq, Ord, Read, Show, Data, Typeable)
 $(deriveSafeCopy 0 'base ''Card)
@@ -129,8 +130,8 @@ data FeeDetail = FeeDetail
     { feeDetailAmount      :: Cents
     , feeDetailCurrency    :: Text
     , feeDetailType        :: Text
-    , feeDetailApplication :: Text
-    , feeDetailDescription :: Text
+    , feeDetailApplication :: Maybe Text
+    , feeDetailDescription :: Maybe Text
     }
     deriving (Eq, Ord, Read, Show, Data, Typeable)
 $(deriveSafeCopy 0 'base ''FeeDetail)
@@ -158,11 +159,11 @@ data Charge = Charge
     , chargeFeeDetails     :: [FeeDetail]
     , chargePaid           :: Bool
     , chargeRefunded       :: Bool -- false for partial refund
-    , chargeAmountRefunded :: Cents
-    , chargeCustomer       :: CustomerId
-    , chargeDescription    :: Text
-    , chargeFailureMessage :: Text
-    , chargeInvoice              :: Text
+    , chargeAmountRefunded :: Maybe Cents
+    , chargeCustomer       :: Maybe CustomerId
+    , chargeDescription    :: Maybe Text
+    , chargeFailureMessage :: Maybe Text
+    , chargeInvoice        :: Maybe Text
     }
     deriving (Eq, Ord, Read, Show, Data, Typeable)
 $(deriveSafeCopy 0 'base ''Charge)
@@ -239,7 +240,7 @@ instance ToJSON CardInfo where
                , "exp_month"       .= cardInfoExpMonth
                , "exp_year"        .= cardInfoExpYear
                , "cvc"             .= cardInfoCvc
-{-
+ {-
                , "name"            .= cardInfoName
                , "address_line1"   .= cardInfoAddr1
                , "address_line2"   .= cardInfoAddr2
@@ -279,11 +280,21 @@ createCharge amount currency chargeTo description =
                    (CT (CardToken ct)) ->
                        [ ("card", Text.encodeUtf8 ct)]
                    (CI (CardInfo{..})) ->
-                       [ ("card[number]", Text.encodeUtf8 cardInfoNumber)
-                       , ("card[exp_month]", showBS cardInfoExpMonth)
-                       , ("card[exp_year]", showBS cardInfoExpYear)
-                       ]
+                       catMaybes [ Just  ("card[number]", Text.encodeUtf8 cardInfoNumber)
+                                 , Just  ("card[exp_month]", showBS cardInfoExpMonth)
+                                 , Just  ("card[exp_year]", showBS cardInfoExpYear)
+                                 , mbItem "card[cvc]" showBS cardInfoCvc
+                                 , mbItem "card[name]" Text.encodeUtf8 cardInfoName
+                                 , mbItem "card[address_line1]" Text.encodeUtf8 cardInfoAddr1
+                                 , mbItem "card[address_line2]" Text.encodeUtf8 cardInfoAddr2
+                                 , mbItem "card[address_zip]" Text.encodeUtf8 cardInfoAddrZip
+                                 , mbItem "card[address_state]" Text.encodeUtf8 cardInfoAddrState
+                                 , mbItem "card[address_country]" Text.encodeUtf8 cardInfoAddrCountry
+                                 ]
                )
+          where
+            mbItem k f Nothing = Nothing
+            mbItem k f (Just v) = Just (k, f v)
 --               [ mbParam "description" description Text.encodeUtf8
 --               ]
                
@@ -293,6 +304,7 @@ stripe :: ( MonadResource m
           ) => ApiKey -> StripeReq m a -> Manager -> m (Either String (Maybe a))
 stripe (ApiKey k) (StripeReq req) manager =
     do res <- httpLbs (applyBasicAuth k "" (req { checkStatus = \_ _ -> Nothing})) manager
+       liftIO $ putStrLn $ Text.unpack $ Text.decodeUtf8 $ toStrict $ responseBody  res
        if W.statusCode (responseStatus res) == 200
           then return $ Right $ decode' (responseBody res)
           else return $ Left $ Text.unpack $ Text.decodeUtf8 $ toStrict $ responseBody  res

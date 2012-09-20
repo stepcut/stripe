@@ -9,7 +9,7 @@ Build-type:          Simple
 Cabal-version:       >=1.6
 
 Library
-  Exposed-modules:     Stripe
+  Exposed-modules:     Stripe, Verbatim
   Build-Depends:       base,
                        aeson == 0.6.*,
                        bytestring == 0.9.*,
