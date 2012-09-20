@@ -46,6 +46,10 @@ create_charge_1 =
        res <- withManager $ stripe testKey sr
        print res
 
+retrieve_charge_1 =
+    do res <- withManager $ stripe testKey (retrieveCharge (ChargeId "ch_0P5N4NiWnsDdhn"))
+       print res
+
 
 chargeObjectValue :: Value
 chargeObjectValue =

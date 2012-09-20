@@ -146,9 +146,12 @@ instance FromJSON FeeDetail where
     parseJSON _ = mzero
 
 type Timestamp = Integer    
+
+newtype ChargeId = ChargeId { unChargeId :: Text }
+    deriving (Eq, Ord, Read, Show, Data, Typeable, SafeCopy, FromJSON)
              
 data Charge = Charge
-    { chargeId             :: Text
+    { chargeId             :: ChargeId
     , chargeLivemode       :: Bool
     , chargeAmount         :: Cents
     , chargeCard           :: Card
@@ -233,23 +236,6 @@ data CardInfo = CardInfo
     deriving (Eq, Ord, Read, Show, Data, Typeable)
 $(deriveSafeCopy 0 'base ''CardInfo)
 
--- FIXME: for Nothing fields, should we send them with the value null or just not send them at all?
-instance ToJSON CardInfo where
-    toJSON CardInfo{..} =
-        object [ "number"          .= cardInfoNumber
-               , "exp_month"       .= cardInfoExpMonth
-               , "exp_year"        .= cardInfoExpYear
-               , "cvc"             .= cardInfoCvc
- {-
-               , "name"            .= cardInfoName
-               , "address_line1"   .= cardInfoAddr1
-               , "address_line2"   .= cardInfoAddr2
-               , "address_zip"     .= cardInfoAddrZip
-               , "address_state"   .= cardInfoAddrState
-               , "address_country" .= cardInfoAddrCountry 
--}
-               ]
-
 newtype CardToken = CardToken { unCardToken :: Text }
     deriving (Eq, Ord, Read, Show, Data, Typeable, SafeCopy)
 
@@ -275,7 +261,7 @@ createCharge amount currency chargeTo description =
                , ("currency", Text.encodeUtf8 currency)
                ] ++ 
                (case chargeTo of
-                   (CS (CustomerId ci)) ->
+                   (CS (CustomerId  ci)) ->
                        [ ("customer", Text.encodeUtf8 ci)]
                    (CT (CardToken ct)) ->
                        [ ("card", Text.encodeUtf8 ct)]
@@ -292,11 +278,22 @@ createCharge amount currency chargeTo description =
                                  , mbItem "card[address_country]" Text.encodeUtf8 cardInfoAddrCountry
                                  ]
                )
-          where
-            mbItem k f Nothing = Nothing
-            mbItem k f (Just v) = Just (k, f v)
---               [ mbParam "description" description Text.encodeUtf8
---               ]
+
+mbItem k f Nothing = Nothing
+mbItem k f (Just v) = Just (k, f v)
+
+retrieveCharge :: (Monad m) => ChargeId -> StripeReq m Charge
+retrieveCharge cid =
+    let (Just req) = parseUrl $ "https://api.stripe.com/v1/charges/" ++ (Text.unpack $ unChargeId cid)
+    in StripeReq req
+
+refundCharge :: (Monad m) => ChargeId -> Maybe Cents -> StripeReq m Charge
+refundCharge cid mCents =
+    let (Just req) = parseUrl $ "https://api.stripe.com/v1/charges/" ++ (Text.unpack $ unChargeId cid) ++ "/refund"
+    in case mCents of
+         Nothing      -> StripeReq $ req { method = "POST" }
+         (Just cents) -> StripeReq $ urlEncodedBody [("amount", showBS cents)] req
+    
                
 stripe :: ( MonadResource m
           , MonadBaseControl IO m
