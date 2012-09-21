@@ -31,13 +31,6 @@ mbParam :: ByteString -> Maybe a -> (a -> ByteString) -> Maybe (ByteString, Byte
 mbParam _ Nothing _ = Nothing
 mbParam name (Just v) show' = Just (name, show' v)
 
-
-{-
-mbItem :: ByteString -> (a -> ByteString) -> Maybe a -> Maybe (ByteString, ByteString)
-mbItem k f Nothing = Nothing
-mbItem k f (Just v) = Just (k, f v)
--}
-
 data StripeReq ret = StripeReq
     { srUrl         :: String
     , srQueryString :: [(ByteString, ByteString)]
@@ -389,16 +382,38 @@ instance FromJSON Customer where
 --                 <*> obj .: "subscription"
     parseJSON _ = mzero
 
-createCustomer :: Either CardInfo CardToken 
-               -> Maybe Coupon
+createCustomer :: Maybe (Either CardToken CardInfo)
+               -> Maybe CouponId
                -> Maybe Text -- ^ email
                -> Maybe Text -- ^ description
                -> Maybe Integer -- ^ acount balance
-               -> Maybe Plan
+               -> Maybe PlanId
                -> Maybe Timestamp -- ^ trial end
                -> Maybe Integer -- ^ quantity
                -> StripeReq Customer
-createCustomer = undefined
+createCustomer mCard mCouponId mEmail mDescription mBalance mPlanId mTimestamp mQuantity =
+    StripeReq { srUrl         = "https://api.stripe.com/v1/customers"
+              , srQueryString = []
+              , srPostData    = 
+                  Just  $
+                        cardParams mCard ++
+                        (catMaybes
+                      [ mbParam "coupon"          mCouponId    (showBS . unCouponId)
+                      , mbParam "email"           mEmail       Text.encodeUtf8
+                      , mbParam "description"     mDescription Text.encodeUtf8
+                      , mbParam "account_balance" mBalance     showBS
+                      , mbParam "plan"            mPlanId      (showBS . unPlanId)
+                      , mbParam "trial_end"       mTimestamp   showBS
+                      , mbParam "quantity"        mQuantity    showBS
+                      ])
+              }
+    where
+      cardParams (Just (Left (CardToken ct))) =
+          [("card", Text.encodeUtf8 ct)]
+      cardParams (Just (Right ci)) =
+          cardInfoPairs ci
+      cardParams Nothing =
+          []
 
 ------------------------------------------------------------------------------
 -- Discount
@@ -416,14 +431,15 @@ data Subscription = Subscription
 -- Coupon
 ------------------------------------------------------------------------------
 
-data Coupon = Coupon
+newtype CouponId = CouponId { unCouponId :: Text }
+    deriving (Eq, Ord, Read, Show, Data, Typeable, SafeCopy, FromJSON)
 
 ------------------------------------------------------------------------------
 -- Plan
 ------------------------------------------------------------------------------
 
-data Plan = Plan
-
+newtype PlanId = PlanId { unPlanId :: Text }
+    deriving (Eq, Ord, Read, Show, Data, Typeable, SafeCopy, FromJSON)
 
 ------------------------------------------------------------------------------
 -- 
