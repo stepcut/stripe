@@ -31,16 +31,30 @@ mbParam :: ByteString -> Maybe a -> (a -> ByteString) -> Maybe (ByteString, Byte
 mbParam _ Nothing _ = Nothing
 mbParam name (Just v) show' = Just (name, show' v)
 
+data SMethod
+    = SGet
+    | SPost [(ByteString, ByteString)]
+    | SDelete
+      deriving (Eq, Ord, Read, Show, Data, Typeable)
+$(deriveSafeCopy 0 'base ''SMethod)
+
 data StripeReq ret = StripeReq
     { srUrl         :: String
     , srQueryString :: [(ByteString, ByteString)]
-    , srPostData    :: Maybe [(ByteString, ByteString)]
+    , srMethod      :: SMethod
     }
     deriving (Eq, Ord, Read, Show, Data, Typeable)
 $(deriveSafeCopy 0 'base ''StripeReq)
 
-usd :: Text
+type Currency = Text
+
+usd :: Currency
 usd = "usd"
+
+type Timestamp = Integer    
+type Count  = Integer
+type Offset = Integer
+
 
 newtype ApiKey = ApiKey { unApiKey :: ByteString }
     deriving (Eq, Ord, Read, Show, Data, Typeable, SafeCopy)
@@ -170,7 +184,7 @@ type Cents = Integer
 
 data FeeDetail = FeeDetail
     { feeDetailAmount      :: Cents
-    , feeDetailCurrency    :: Text
+    , feeDetailCurrency    :: Currency
     , feeDetailType        :: Text
     , feeDetailApplication :: Maybe Text
     , feeDetailDescription :: Maybe Text
@@ -187,7 +201,201 @@ instance FromJSON FeeDetail where
                   <*> obj .: "description"
     parseJSON _ = mzero
 
-type Timestamp = Integer    
+------------------------------------------------------------------------------
+-- Coupon
+------------------------------------------------------------------------------
+
+newtype CouponId = CouponId { unCouponId :: Text }
+    deriving (Eq, Ord, Read, Show, Data, Typeable, SafeCopy, FromJSON)
+
+------------------------------------------------------------------------------
+-- Plan
+------------------------------------------------------------------------------
+
+newtype PlanId = PlanId { unPlanId :: Text }
+    deriving (Eq, Ord, Read, Show, Data, Typeable, SafeCopy, FromJSON)
+
+data Interval
+    = Month
+    | Year
+    deriving (Eq, Ord, Read, Show, Data, Typeable)
+$(deriveSafeCopy 0 'base ''Interval)
+
+instance FromJSON Interval where
+    parseJSON (String str)
+        | str == "month"     = return Month
+        | str == "year"      = return Year
+    parseJSON _ = mzero
+
+data Plan = Plan
+    { planId              :: PlanId
+    , planLivemode        :: Bool
+    , planAmount          :: Cents
+    , planCurrency        :: Currency
+    , planInterval        :: Interval
+    , planIntervalCount   :: Integer
+    , planName            :: Text
+    , planTrialPeriodDays :: Maybe Integer
+    }
+    deriving (Eq, Ord, Read, Show, Data, Typeable)
+$(deriveSafeCopy 0 'base ''Plan)
+
+instance FromJSON Plan where
+    parseJSON (Object obj) =
+        Plan <$> obj .: "id"
+             <*> obj .: "livemode"
+             <*> obj .: "amount"
+             <*> obj .: "currency"
+             <*> obj .: "interval"
+             <*> obj .: "interval_count"
+             <*> obj .: "name"
+             <*> obj .: "trial_period_days"
+    parseJSON _ = mzero
+
+createPlan :: PlanId
+           -> Cents
+           -> Currency
+           -> Interval
+           -> Maybe Integer
+           -> Text
+           -> Maybe Integer
+           -> StripeReq Plan
+createPlan pid amount currency interval mIntervalCount name mTrialPeriodDays =
+        StripeReq { srUrl         = "https://api.stripe.com/v1/plans"
+                  , srQueryString = []
+                  , srMethod      = SPost params
+                  }
+    where
+      params = catMaybes
+                 [ Just   ("amount", showBS amount)
+                 , Just   ("currency", Text.encodeUtf8 currency)
+                 , Just   ("interval", Text.encodeUtf8 (case interval of Month -> "month" ; Year -> "year"))
+                 , mbParam "interval_count" mIntervalCount showBS
+                 , Just   ("name", Text.encodeUtf8 name)
+                 , mbParam "trial_period_days" mTrialPeriodDays showBS
+                 ]
+
+getPlan :: PlanId
+        -> StripeReq Plan
+getPlan pid =
+    StripeReq { srUrl         = "https://api.stripe.com/v1/plans/" ++ (Text.unpack $ unPlanId pid)
+              , srQueryString = []
+              , srMethod      = SGet
+              }
+
+updatePlan :: PlanId
+            -> Text
+            -> StripeReq Plan
+updatePlan pid name =
+    StripeReq { srUrl         = "https://api.stripe.com/v1/plans/" ++ (Text.unpack $ unPlanId pid)
+              , srQueryString = []
+              , srMethod      = SPost [("name", Text.encodeUtf8 name)]
+              }
+
+deletePlan :: PlanId
+           -> StripeReq Plan
+deletePlan pid =
+    StripeReq { srUrl         = "https://api.stripe.com/v1/plans/" ++ (Text.unpack $ unPlanId pid)
+              , srQueryString = []
+              , srMethod      = SDelete
+              }
+
+data Plans = Plans
+    { planCount :: Integer
+    , planData  :: [Plan]
+    }
+    deriving (Eq, Ord, Read, Show, Data, Typeable)
+$(deriveSafeCopy 0 'base ''Plans)
+
+instance FromJSON Plans where
+    parseJSON (Object obj) =
+        Plans <$> obj .: "count"
+              <*> obj .: "data"
+    parseJSON _ = mzero
+
+getPlans :: Maybe Count
+         -> Maybe Offset
+         -> StripeReq Plans
+getPlans mCount mOffset =
+    StripeReq { srUrl         = "https://api.stripe.com/v1/plans"
+              , srQueryString = params
+              , srMethod      = SGet
+              }
+    where
+      params = catMaybes [ mbParam "count"    mCount      showBS
+                         , mbParam "offset"   mOffset     showBS
+                         ]
+
+------------------------------------------------------------------------------
+-- CardInfo
+------------------------------------------------------------------------------
+
+data CardInfo = CardInfo
+    { cardInfoNumber      :: Text
+    , cardInfoExpMonth    :: Int
+    , cardInfoExpYear     :: Int
+    , cardInfoCvc         :: Maybe Int
+    , cardInfoName        :: Maybe Text
+    , cardInfoAddr1       :: Maybe Text
+    , cardInfoAddr2       :: Maybe Text
+    , cardInfoAddrZip     :: Maybe Text
+    , cardInfoAddrState   :: Maybe Text
+    , cardInfoAddrCountry :: Maybe Text
+    }
+    deriving (Eq, Ord, Read, Show, Data, Typeable)
+$(deriveSafeCopy 0 'base ''CardInfo)
+
+cardInfoPairs :: CardInfo -> [(ByteString, ByteString)]
+cardInfoPairs (CardInfo{..}) =
+    catMaybes [ Just  ("card[number]", Text.encodeUtf8 cardInfoNumber)
+              , Just  ("card[exp_month]", showBS cardInfoExpMonth)
+              , Just  ("card[exp_year]", showBS cardInfoExpYear)
+              , mbParam "card[cvc]"             cardInfoCvc         showBS 
+              , mbParam "card[name]"            cardInfoName        Text.encodeUtf8 
+              , mbParam "card[address_line1]"   cardInfoAddr1       Text.encodeUtf8 
+              , mbParam "card[address_line2]"   cardInfoAddr2       Text.encodeUtf8 
+              , mbParam "card[address_zip]"     cardInfoAddrZip     Text.encodeUtf8 
+              , mbParam "card[address_state]"   cardInfoAddrState   Text.encodeUtf8 
+              , mbParam "card[address_country]" cardInfoAddrCountry Text.encodeUtf8 
+              ]
+
+------------------------------------------------------------------------------
+-- CardToken
+------------------------------------------------------------------------------
+
+
+newtype CardTokenId = CardTokenId { unCardTokenId :: Text }
+    deriving (Eq, Ord, Read, Show, Data, Typeable, SafeCopy)
+
+data CardToken = CardToken
+    { cardTokenId       :: CardTokenId
+    , cardTokenLivemode :: Bool
+    , cardTokenCard     :: Card
+    , cardTokenCreated  :: Timestamp
+    , cardTokenUsed     :: Bool
+    }
+    deriving (Eq, Ord, Read, Show, Data, Typeable)
+$(deriveSafeCopy 0 'base ''CardToken)
+
+createCardToken :: CardInfo
+                -> StripeReq CardToken
+createCardToken cardInfo =
+    StripeReq { srUrl         = "https://api.stripe.com/v1/tokens"
+              , srQueryString = []
+              , srMethod      = SPost (cardInfoPairs cardInfo)
+              }
+
+getCardToken :: CardTokenId
+             -> StripeReq CardToken
+getCardToken cti =
+    StripeReq { srUrl         = "https://api.stripe.com/v1/tokens/" ++ Text.unpack (unCardTokenId cti)
+              , srQueryString = []
+              , srMethod      = SGet
+              }
+
+------------------------------------------------------------------------------
+-- Charge
+------------------------------------------------------------------------------
 
 newtype ChargeId = ChargeId { unChargeId :: Text }
     deriving (Eq, Ord, Read, Show, Data, Typeable, SafeCopy, FromJSON)
@@ -198,7 +406,7 @@ data Charge = Charge
     , chargeAmount         :: Cents
     , chargeCard           :: Card
     , chargeTimestamp      :: Timestamp
-    , chargeCurrency       :: Text
+    , chargeCurrency       :: Currency
     , chargeDisputed       :: Bool
     , chargeFee            :: Cents
     , chargeFeeDetails     :: [FeeDetail]
@@ -246,17 +454,14 @@ instance FromJSON Charges where
                 <*> obj .: "data"
     parseJSON _ = mzero
 
-type Count  = Integer
-type Offset = Integer
-
-charges :: Maybe Count
-        -> Maybe Offset
-        -> Maybe CustomerId
-        -> StripeReq Charges
-charges mCount mOffset mCustomerId =
+getCharges :: Maybe Count
+           -> Maybe Offset
+           -> Maybe CustomerId
+           -> StripeReq Charges
+getCharges mCount mOffset mCustomerId =
     StripeReq { srUrl         = "https://api.stripe.com/v1/charges"
               , srQueryString = params
-              , srPostData    = Nothing
+              , srMethod      = SGet
               }
     where
       params = catMaybes [ mbParam "count"    mCount      showBS
@@ -264,29 +469,9 @@ charges mCount mOffset mCustomerId =
                          , mbParam "customer" mCustomerId (Text.encodeUtf8 . unCustomerId)
                          ]
 
-type Currency = Text
-
-data CardInfo = CardInfo
-    { cardInfoNumber      :: Text
-    , cardInfoExpMonth    :: Int
-    , cardInfoExpYear     :: Int
-    , cardInfoCvc         :: Maybe Int
-    , cardInfoName        :: Maybe Text
-    , cardInfoAddr1       :: Maybe Text
-    , cardInfoAddr2       :: Maybe Text
-    , cardInfoAddrZip     :: Maybe Text
-    , cardInfoAddrState   :: Maybe Text
-    , cardInfoAddrCountry :: Maybe Text
-    }
-    deriving (Eq, Ord, Read, Show, Data, Typeable)
-$(deriveSafeCopy 0 'base ''CardInfo)
-
-newtype CardToken = CardToken { unCardToken :: Text }
-    deriving (Eq, Ord, Read, Show, Data, Typeable, SafeCopy)
-
 data ChargeTo
     = CI CardInfo
-    | CT CardToken
+    | CT CardTokenId
     | CS CustomerId
     deriving (Eq, Ord, Read, Show, Data, Typeable)
 $(deriveSafeCopy 0 'base ''ChargeTo)
@@ -299,7 +484,7 @@ createCharge :: Cents  -- ^ amount
 createCharge amount currency chargeTo description =
     StripeReq { srUrl         = "https://api.stripe.com/v1/charges"
               , srQueryString = []
-              , srPostData    = Just params
+              , srMethod      = SPost params
               }
     where
       params =
@@ -309,32 +494,17 @@ createCharge amount currency chargeTo description =
                (case chargeTo of
                    (CS (CustomerId  ci)) ->
                        [ ("customer", Text.encodeUtf8 ci)]
-                   (CT (CardToken ct)) ->
+                   (CT (CardTokenId ct)) ->
                        [ ("card", Text.encodeUtf8 ct)]
                    (CI ci) -> cardInfoPairs ci
                )
-
-cardInfoPairs :: CardInfo -> [(ByteString, ByteString)]
-cardInfoPairs (CardInfo{..}) =
-    catMaybes [ Just  ("card[number]", Text.encodeUtf8 cardInfoNumber)
-              , Just  ("card[exp_month]", showBS cardInfoExpMonth)
-              , Just  ("card[exp_year]", showBS cardInfoExpYear)
-              , mbParam "card[cvc]"             cardInfoCvc         showBS 
-              , mbParam "card[name]"            cardInfoName        Text.encodeUtf8 
-              , mbParam "card[address_line1]"   cardInfoAddr1       Text.encodeUtf8 
-              , mbParam "card[address_line2]"   cardInfoAddr2       Text.encodeUtf8 
-              , mbParam "card[address_zip]"     cardInfoAddrZip     Text.encodeUtf8 
-              , mbParam "card[address_state]"   cardInfoAddrState   Text.encodeUtf8 
-              , mbParam "card[address_country]" cardInfoAddrCountry Text.encodeUtf8 
-              ]
-
 
 retrieveCharge :: ChargeId
                -> StripeReq Charge
 retrieveCharge cid =
     StripeReq { srUrl         = "https://api.stripe.com/v1/charges/" ++ (Text.unpack $ unChargeId cid)
               , srQueryString = []
-              , srPostData    = Nothing
+              , srMethod      = SGet
               }
 
 
@@ -344,9 +514,9 @@ refundCharge :: ChargeId
 refundCharge cid mCents =
     StripeReq { srUrl         = "https://api.stripe.com/v1/charges/" ++ (Text.unpack $ unChargeId cid) ++ "/refund"
               , srQueryString = []
-              , srPostData    = Just $ case mCents of
-                                         Nothing      -> []
-                                         (Just cents) -> [("amount", showBS cents)]
+              , srMethod      = SPost $ case mCents of
+                                            Nothing      -> []
+                                            (Just cents) -> [("amount", showBS cents)]
               }
 
 ------------------------------------------------------------------------------
@@ -382,7 +552,7 @@ instance FromJSON Customer where
 --                 <*> obj .: "subscription"
     parseJSON _ = mzero
 
-createCustomer :: Maybe (Either CardToken CardInfo)
+createCustomer :: Maybe (Either CardTokenId CardInfo)
                -> Maybe CouponId
                -> Maybe Text -- ^ email
                -> Maybe Text -- ^ description
@@ -394,8 +564,8 @@ createCustomer :: Maybe (Either CardToken CardInfo)
 createCustomer mCard mCouponId mEmail mDescription mBalance mPlanId mTimestamp mQuantity =
     StripeReq { srUrl         = "https://api.stripe.com/v1/customers"
               , srQueryString = []
-              , srPostData    = 
-                  Just  $
+              , srMethod      =
+                  SPost  $
                         cardParams mCard ++
                         (catMaybes
                       [ mbParam "coupon"          mCouponId    (showBS . unCouponId)
@@ -408,12 +578,84 @@ createCustomer mCard mCouponId mEmail mDescription mBalance mPlanId mTimestamp m
                       ])
               }
     where
-      cardParams (Just (Left (CardToken ct))) =
+      cardParams (Just (Left (CardTokenId ct))) =
           [("card", Text.encodeUtf8 ct)]
       cardParams (Just (Right ci)) =
           cardInfoPairs ci
       cardParams Nothing =
           []
+
+updateCustomer :: CustomerId
+               -> Maybe (Either CardTokenId CardInfo)
+               -> Maybe CouponId
+               -> Maybe Text -- ^ email
+               -> Maybe Text -- ^ description
+               -> Maybe Integer -- ^ acount balance
+               -> StripeReq Customer
+updateCustomer cid mCard mCouponId mEmail mDescription mBalance =
+    StripeReq { srUrl         = "https://api.stripe.com/v1/customers/" ++ Text.unpack (unCustomerId cid)
+              , srQueryString = []
+              , srMethod      =
+                  SPost  $
+                        cardParams mCard ++
+                        (catMaybes
+                      [ mbParam "coupon"          mCouponId    (showBS . unCouponId)
+                      , mbParam "email"           mEmail       Text.encodeUtf8
+                      , mbParam "description"     mDescription Text.encodeUtf8
+                      , mbParam "account_balance" mBalance     showBS
+                      ])
+              }
+    where
+      cardParams (Just (Left (CardTokenId ct))) =
+          [("card", Text.encodeUtf8 ct)]
+      cardParams (Just (Right ci)) =
+          cardInfoPairs ci
+      cardParams Nothing =
+          []
+
+getCustomer :: CustomerId
+            -> StripeReq Customer
+getCustomer cid =
+    StripeReq { srUrl         = "https://api.stripe.com/v1/customers/" ++ (Text.unpack $ unCustomerId cid)
+              , srQueryString = []
+              , srMethod      = SGet
+              }
+
+data Customers = Customers
+    { customersCount :: Integer
+    , customersData  :: [Customer]
+    }
+    deriving (Eq, Ord, Read, Show, Data, Typeable)
+$(deriveSafeCopy 0 'base ''Customers)
+
+instance FromJSON Customers where
+    parseJSON (Object obj) =
+        Customers <$> obj .: "count"
+                  <*> obj .: "data"
+    parseJSON _ = mzero
+
+
+getCustomers :: Maybe Count
+             -> Maybe Offset
+             -> StripeReq Customers
+getCustomers mCount mOffset =
+    StripeReq { srUrl         = "https://api.stripe.com/v1/customers"
+              , srQueryString = params
+              , srMethod      = SGet
+              }
+    where
+      params = catMaybes [ mbParam "count"    mCount      showBS
+                         , mbParam "offset"   mOffset     showBS
+                         ]
+
+
+deleteCustomer :: CustomerId
+               -> StripeReq Customer
+deleteCustomer cid =
+    StripeReq { srUrl         = "https://api.stripe.com/v1/customers/" ++ (Text.unpack $ unCustomerId cid)
+              , srQueryString = []
+              , srMethod      = SDelete
+              }
 
 ------------------------------------------------------------------------------
 -- Discount
@@ -427,19 +669,6 @@ data Discount = Discount
 
 data Subscription = Subscription
 
-------------------------------------------------------------------------------
--- Coupon
-------------------------------------------------------------------------------
-
-newtype CouponId = CouponId { unCouponId :: Text }
-    deriving (Eq, Ord, Read, Show, Data, Typeable, SafeCopy, FromJSON)
-
-------------------------------------------------------------------------------
--- Plan
-------------------------------------------------------------------------------
-
-newtype PlanId = PlanId { unPlanId :: Text }
-    deriving (Eq, Ord, Read, Show, Data, Typeable, SafeCopy, FromJSON)
 
 ------------------------------------------------------------------------------
 -- 
@@ -453,10 +682,12 @@ stripe :: ( MonadResource m
        -> Manager
        -> m (Either StripeError a)
 stripe (ApiKey k) (StripeReq{..}) manager =
-    do let req = maybe id urlEncodedBody srPostData $
-                  (fromJust $ parseUrl srUrl)
-                    { queryString = W.renderSimpleQuery False srQueryString 
-                    } 
+    do let req' = (fromJust $ parseUrl srUrl) { queryString = W.renderSimpleQuery False srQueryString 
+                                              } 
+           req = case srMethod of
+                   SGet -> req'
+                   (SPost params) -> urlEncodedBody params req'
+                   SDelete        -> req' { method = "DELETE" }
        res <- httpLbs (applyBasicAuth k "" (req { checkStatus = \_ _ -> Nothing})) manager
        liftIO $ print $ responseStatus res
        liftIO $ putStrLn $ Text.unpack $ Text.decodeUtf8 $ toStrict $ responseBody  res
