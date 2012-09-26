@@ -27,6 +27,10 @@ toStrict = mconcat . BL.toChunks
 showBS :: (Show a) => a -> ByteString
 showBS = fromString . show
 
+boolBS :: Bool -> ByteString
+boolBS True  = "true"
+boolBS False = "false"
+
 mbParam :: ByteString -> Maybe a -> (a -> ByteString) -> Maybe (ByteString, ByteString)
 mbParam _ Nothing _ = Nothing
 mbParam name (Just v) show' = Just (name, show' v)
@@ -55,6 +59,16 @@ type Timestamp = Integer
 type Count  = Integer
 type Offset = Integer
 
+data List a = List
+    { count :: Integer
+    , data_ :: [a]
+    }
+
+instance (FromJSON a) => FromJSON (List a) where
+    parseJSON (Object obj) =
+        List <$> obj .: "count"
+             <*> obj .: "data"
+    parseJSON _ = mzero
 
 newtype ApiKey = ApiKey { unApiKey :: ByteString }
     deriving (Eq, Ord, Read, Show, Data, Typeable, SafeCopy)
@@ -473,7 +487,7 @@ updateSubscription cid planId mCouponId mProrate mTrialEnd mCard mQuantity =
     where
       params = (catMaybes [ Just ("plan", Text.encodeUtf8 (unPlanId planId))
                           , mbParam "coupon"    mCouponId (Text.encodeUtf8 . unCouponId)
-                          , mbParam "prorate"   mProrate (\p -> if p then "true" else "false")
+                          , mbParam "prorate"   mProrate  boolBS
                           , mbParam "trial_end" mTrialEnd showBS
                           , mbParam "quantity"  mQuantity showBS
                           ]) ++ case mCard of
@@ -486,7 +500,7 @@ cancelSubscription :: CustomerId
                    -> StripeReq Subscription
 cancelSubscription cid mAtPeriodEnd =
     StripeReq { srUrl         = "https://api.stripe.com/v1/customers/" ++ Text.unpack (unCustomerId cid) ++ "/subscription"
-              , srQueryString = maybe [] (\b -> [("at_period_end", if b then "true" else "false")]) mAtPeriodEnd
+              , srQueryString = maybe [] (\b -> [("at_period_end", boolBS b)]) mAtPeriodEnd
               , srMethod      = SDelete
               }
 
@@ -644,6 +658,58 @@ instance FromJSON Invoice where
                 <*> obj .: "ending_balance"
                 <*> obj .: "next_payment_attempt"
     parseJSON _ = mzero
+
+getInvoice :: InvoiceId
+           -> StripeReq Invoice
+getInvoice iid =
+    StripeReq { srUrl         = "https://api.stripe.com/v1/invoices/" ++ Text.unpack (unInvoiceId iid)
+              , srQueryString = []
+              , srMethod      = SGet
+              }
+
+payInvoice :: InvoiceId
+           -> Maybe Integer
+           -> StripeReq Invoice
+payInvoice iid mDepth =
+    StripeReq { srUrl         = "https://api.stripe.com/v1/invoices/" ++ Text.unpack (unInvoiceId iid) ++ "/pay"
+              , srQueryString = []
+              , srMethod      = SPost (maybe [] (\d -> [("depth", showBS d)]) mDepth)
+              }
+
+updateInvoice :: InvoiceId
+              -> Maybe Bool
+              -> Maybe Integer
+              -> StripeReq Invoice
+updateInvoice iid mClosed mDepth =
+    StripeReq { srUrl         = "https://api.stripe.com/v1/invoices/" ++ Text.unpack (unInvoiceId iid)
+              , srQueryString = []
+              , srMethod      = SPost $ catMaybes [ mbParam "closed" mClosed boolBS
+                                                  , mbParam "depth"  mDepth  showBS
+                                                  ]
+              }
+
+getInvoices :: Maybe CustomerId
+            -> Maybe Count
+            -> Maybe Offset
+            -> StripeReq (List Invoice)
+getInvoices mCustomerId mCount mOffset =
+    StripeReq { srUrl         = "https://api.stripe.com/v1/invoices/"
+              , srQueryString = catMaybes [ mbParam "customer" mCustomerId (Text.encodeUtf8 . unCustomerId)
+                                          , mbParam "count"  mCount showBS
+                                          , mbParam "offset" mOffset showBS
+                                          ]
+              , srMethod      = SGet
+              }
+
+
+getUpcomingInvoice :: CustomerId
+                   -> StripeReq Invoice
+getUpcomingInvoice cid =
+    StripeReq { srUrl         = "https://api.stripe.com/v1/invoices/incoming"
+              , srQueryString = [ ("customer", Text.encodeUtf8 (unCustomerId cid)) ]
+              , srMethod      = SGet
+              }
+
 
 ------------------------------------------------------------------------------
 -- Charge
