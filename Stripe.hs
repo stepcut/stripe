@@ -288,16 +288,160 @@ getCardToken cti =
 newtype CouponId = CouponId { unCouponId :: Text }
     deriving (Eq, Ord, Read, Show, Data, Typeable, SafeCopy, FromJSON)
 
+data Duration
+    = Forever
+    | Once
+    | Repeating
+    deriving (Eq, Ord, Read, Show, Data, Typeable)
+$(deriveSafeCopy 0 'base ''Duration)
+
+instance FromJSON Duration where
+    parseJSON (String str)
+        | str == "forever"   = return Forever
+        | str == "once"      = return Once
+        | str == "repeating" = return Repeating
+    parseJSON _ = mzero
+
+data Coupon = Coupon
+    { couponId               :: CouponId
+    , couponLivemode         :: Bool
+    , couponDuration         :: Duration
+    , couponPercentOff       :: Integer
+    , couponDurationInMonths :: Maybe Integer
+    , couponMaxRedemptions   :: Maybe Integer
+    , couponRedeemBy         :: Maybe Timestamp
+    , couponTimeRedeeded     :: Maybe Integer
+    }
+    deriving (Eq, Ord, Read, Show, Data, Typeable)
+$(deriveSafeCopy 0 'base ''Coupon)
+
+instance FromJSON Coupon where
+    parseJSON (Object obj) =
+        Coupon <$> obj .: "id"
+               <*> obj .: "livemode"
+               <*> obj .: "duration"
+               <*> obj .: "percent_off"
+               <*> obj .: "duration_in_months"
+               <*> obj .: "max_redemptions"
+               <*> obj .: "redeem_by"
+               <*> obj .: "times_redeemed"
+    parseJSON _ = mzero
+
+createCoupon :: Maybe CouponId
+             -> Integer -- ^ precent off (1 - 100)
+             -> Duration
+             -> Maybe Integer
+             -> Maybe Integer
+             -> Maybe Timestamp
+             -> StripeReq Coupon
+createCoupon mCouponId percentOff duration mDurationInMonths mMaxRedemptions mRedeemBy =
+    StripeReq { srUrl         = "https://api.stripe.com/v1/coupons"
+              , srQueryString = []
+              , srMethod      =
+                  SPost $ (catMaybes
+                           [ mbParam "coupon"             mCouponId    (showBS . unCouponId)
+                           , Just $ ("percent_off", showBS percentOff)
+                           , Just $ ("duraton", case duration of
+                                                  Forever   -> "forever"
+                                                  Once      -> "once"
+                                                  Repeating -> "repeating")
+                           , mbParam "duration_in_months" mDurationInMonths showBS
+                           , mbParam "max_redemptions"    mMaxRedemptions   showBS
+                           , mbParam "redeem_by"          mRedeemBy         showBS
+                           ])
+              }
+
+getCoupon :: CouponId
+          -> StripeReq Coupon
+getCoupon couponId =
+    StripeReq { srUrl         = "https://api.stripe.com/v1/coupons/" ++ Text.unpack (unCouponId couponId)
+              , srQueryString = []
+              , srMethod      = SGet
+              }
+
+deleteCoupon :: CouponId
+             -> StripeReq Coupon
+deleteCoupon couponId =
+    StripeReq { srUrl         = "https://api.stripe.com/v1/coupons/" ++ Text.unpack (unCouponId couponId)
+              , srQueryString = []
+              , srMethod      = SDelete
+              }
+
+getCoupons :: Maybe Count
+           -> Maybe Offset
+           -> StripeReq (List Coupon)
+getCoupons mCount mOffset =
+    StripeReq { srUrl         = "https://api.stripe.com/v1/coupons"
+              , srQueryString = catMaybes [ mbParam "count"    mCount  showBS
+                                          , mbParam "offset"   mOffset showBS
+                                          ]
+              , srMethod      = SGet
+              }
+
 ------------------------------------------------------------------------------
 -- Discount
 ------------------------------------------------------------------------------
 
 data Discount = Discount
+    { discountCoupon     :: Coupon
+    , discountCustomerId :: CustomerId
+    , discountStart      :: Timestamp
+    , discountEnd        :: Maybe Timestamp
+    }
     deriving (Eq, Ord, Read, Show, Data, Typeable)
 $(deriveSafeCopy 0 'base ''Discount)
 
 instance FromJSON Discount where
-    parseJSON _ = return Discount
+    parseJSON (Object obj) =
+        Discount <$> obj .: "coupon"
+                 <*> obj .: "customer"
+                 <*> obj .: "start"
+                 <*> obj .: "end"
+    parseJSON _ = mzero
+
+
+deleteDiscount :: CustomerId
+               -> StripeReq Discount
+deleteDiscount customerId =
+    StripeReq { srUrl         = "https://api.stripe.com/v1/customers/" ++ Text.unpack (unCustomerId customerId) ++ "/discount"
+              , srQueryString = []
+              , srMethod      = SDelete
+              }
+
+------------------------------------------------------------------------------
+-- Account
+------------------------------------------------------------------------------
+
+newtype AccountId = AccountId { unAccountId :: Text }
+    deriving (Eq, Ord, Read, Show, Data, Typeable, SafeCopy, FromJSON)
+
+data Account = Account
+    { accountId :: AccountId
+    , accountChargeEnabled :: Bool
+    , accountCurrenciesSupported :: [Currency]
+    , accountDetailsSubmitted :: Bool
+    , accountEmail :: Maybe Text
+    , accountStatementDescriptor :: Maybe Text
+    }
+    deriving (Eq, Ord, Read, Show, Data, Typeable)
+$(deriveSafeCopy 0 'base ''Account)
+
+instance FromJSON Account where
+    parseJSON (Object obj) =
+        Account <$> obj .: "id"
+                <*> obj .: "change_enabled"
+                <*> obj .: "currencies_supported"
+                <*> obj .: "details_submitted"
+                <*> obj .: "email"
+                <*> obj .: "statement_descriptor"
+    parseJSON _ = mzero
+
+getAccount :: StripeReq Account
+getAccount =
+    StripeReq { srUrl         = "https://api.stripe.com/v1/account"
+              , srQueryString = []
+              , srMethod      = SGet
+              }
 
 ------------------------------------------------------------------------------
 -- Plan
@@ -912,9 +1056,9 @@ data Customer = Customer
     , customerActiveCard :: Card
     , customerDeliquent :: Maybe Bool
     , customerDescription :: Maybe Text
---    , customerDiscount :: Maybe Discount
+    , customerDiscount :: Maybe Discount
     , customerEmail :: Maybe Text
---    , customerSubscription :: Maybe Subscription
+    , customerSubscription :: Maybe Subscription
     }
     deriving (Eq, Ord, Read, Show, Data, Typeable)
 $(deriveSafeCopy 0 'base ''Customer)
@@ -928,9 +1072,9 @@ instance FromJSON Customer where
                  <*> obj .: "active_card"
                  <*> obj .: "delinquent"
                  <*> obj .: "description"
---                 <*> obj .: "discount"
+                 <*> obj .: "discount"
                  <*> obj .: "email"
---                 <*> obj .: "subscription"
+                 <*> obj .: "subscription"
     parseJSON _ = mzero
 
 createCustomer :: Maybe (Either CardTokenId CardInfo)
@@ -1039,7 +1183,21 @@ deleteCustomer cid =
               }
 
 ------------------------------------------------------------------------------
--- 
+-- Events
+------------------------------------------------------------------------------
+
+newtype EventId = EventId { unEventId :: Text }
+    deriving (Eq, Ord, Read, Show, Data, Typeable, SafeCopy, FromJSON)
+{-
+data Event = Event
+    { eventId :: EventId
+    , eventLivemode :: Bool
+    , eventCreated :: Timestamp
+--    , eventData 
+-}
+
+------------------------------------------------------------------------------
+-- stripe
 ------------------------------------------------------------------------------
 
 stripe :: ( MonadResource m
