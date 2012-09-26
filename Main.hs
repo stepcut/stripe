@@ -7,7 +7,10 @@ import Data.String (IsString(fromString))
 import Data.Text.Lazy as Text
 import qualified Data.Text.Lazy.Encoding as Text
 import Network.HTTP.Conduit
-import Stripe
+import Stripe.Core
+import Stripe.Token
+import Stripe.Charge
+import Stripe.HttpConduit
 import Verbatim
 
 testKey :: ApiKey
@@ -15,7 +18,7 @@ testKey = ApiKey "sk_TZjqQX1iWkWgMOuJivz4uElPsAkoI"
 
 charges_1 :: IO ()
 charges_1 =
-    do res <- withManager $ stripe testKey (charges Nothing Nothing Nothing)
+    do res <- withManager $ stripe testKey (getCharges Nothing Nothing Nothing)
        print res
 
 dummyCard :: CardInfo
@@ -47,8 +50,8 @@ invalidCard = CardInfo
     }
 
 
-dummyCardToken :: CardToken
-dummyCardToken = CardToken "tok_jOq0M8vJprCUUU"
+dummyCardTokenId :: CardTokenId
+dummyCardTokenId = CardTokenId "tok_jOq0M8vJprCUUU"
 
 create_charge_1 :: IO ()
 create_charge_1 =
@@ -63,12 +66,12 @@ create_charge_2 =
        print res
 
 retrieve_charge_1 =
-    do res <- withManager $ stripe testKey (retrieveCharge (ChargeId "ch_0P5N4NiWnsDdhn"))
+    do res <- withManager $ stripe testKey (getCharge (ChargeId "ch_0P5N4NiWnsDdhn"))
        print res
 
 
 retrieve_charge_2 =
-    do res <- withManager $ stripe testKey (retrieveCharge (ChargeId "ch_5N4NiWnsDdhn"))
+    do res <- withManager $ stripe testKey (getCharge (ChargeId "ch_5N4NiWnsDdhn"))
        print res
 
 
