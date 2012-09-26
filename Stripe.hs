@@ -200,6 +200,72 @@ instance FromJSON FeeDetail where
                   <*> obj .: "application"
                   <*> obj .: "description"
     parseJSON _ = mzero
+------------------------------------------------------------------------------
+-- CardInfo
+------------------------------------------------------------------------------
+
+data CardInfo = CardInfo
+    { cardInfoNumber      :: Text
+    , cardInfoExpMonth    :: Int
+    , cardInfoExpYear     :: Int
+    , cardInfoCvc         :: Maybe Int
+    , cardInfoName        :: Maybe Text
+    , cardInfoAddr1       :: Maybe Text
+    , cardInfoAddr2       :: Maybe Text
+    , cardInfoAddrZip     :: Maybe Text
+    , cardInfoAddrState   :: Maybe Text
+    , cardInfoAddrCountry :: Maybe Text
+    }
+    deriving (Eq, Ord, Read, Show, Data, Typeable)
+$(deriveSafeCopy 0 'base ''CardInfo)
+
+cardInfoPairs :: CardInfo -> [(ByteString, ByteString)]
+cardInfoPairs (CardInfo{..}) =
+    catMaybes [ Just  ("card[number]", Text.encodeUtf8 cardInfoNumber)
+              , Just  ("card[exp_month]", showBS cardInfoExpMonth)
+              , Just  ("card[exp_year]", showBS cardInfoExpYear)
+              , mbParam "card[cvc]"             cardInfoCvc         showBS 
+              , mbParam "card[name]"            cardInfoName        Text.encodeUtf8 
+              , mbParam "card[address_line1]"   cardInfoAddr1       Text.encodeUtf8 
+              , mbParam "card[address_line2]"   cardInfoAddr2       Text.encodeUtf8 
+              , mbParam "card[address_zip]"     cardInfoAddrZip     Text.encodeUtf8 
+              , mbParam "card[address_state]"   cardInfoAddrState   Text.encodeUtf8 
+              , mbParam "card[address_country]" cardInfoAddrCountry Text.encodeUtf8 
+              ]
+
+------------------------------------------------------------------------------
+-- CardToken
+------------------------------------------------------------------------------
+
+
+newtype CardTokenId = CardTokenId { unCardTokenId :: Text }
+    deriving (Eq, Ord, Read, Show, Data, Typeable, SafeCopy)
+
+data CardToken = CardToken
+    { cardTokenId       :: CardTokenId
+    , cardTokenLivemode :: Bool
+    , cardTokenCard     :: Card
+    , cardTokenCreated  :: Timestamp
+    , cardTokenUsed     :: Bool
+    }
+    deriving (Eq, Ord, Read, Show, Data, Typeable)
+$(deriveSafeCopy 0 'base ''CardToken)
+
+createCardToken :: CardInfo
+                -> StripeReq CardToken
+createCardToken cardInfo =
+    StripeReq { srUrl         = "https://api.stripe.com/v1/tokens"
+              , srQueryString = []
+              , srMethod      = SPost (cardInfoPairs cardInfo)
+              }
+
+getCardToken :: CardTokenId
+             -> StripeReq CardToken
+getCardToken cti =
+    StripeReq { srUrl         = "https://api.stripe.com/v1/tokens/" ++ Text.unpack (unCardTokenId cti)
+              , srQueryString = []
+              , srMethod      = SGet
+              }
 
 ------------------------------------------------------------------------------
 -- Coupon
@@ -207,6 +273,17 @@ instance FromJSON FeeDetail where
 
 newtype CouponId = CouponId { unCouponId :: Text }
     deriving (Eq, Ord, Read, Show, Data, Typeable, SafeCopy, FromJSON)
+
+------------------------------------------------------------------------------
+-- Discount
+------------------------------------------------------------------------------
+
+data Discount = Discount
+    deriving (Eq, Ord, Read, Show, Data, Typeable)
+$(deriveSafeCopy 0 'base ''Discount)
+
+instance FromJSON Discount where
+    parseJSON _ = return Discount
 
 ------------------------------------------------------------------------------
 -- Plan
@@ -325,73 +402,248 @@ getPlans mCount mOffset =
       params = catMaybes [ mbParam "count"    mCount      showBS
                          , mbParam "offset"   mOffset     showBS
                          ]
-
 ------------------------------------------------------------------------------
--- CardInfo
+-- Subscription
 ------------------------------------------------------------------------------
 
-data CardInfo = CardInfo
-    { cardInfoNumber      :: Text
-    , cardInfoExpMonth    :: Int
-    , cardInfoExpYear     :: Int
-    , cardInfoCvc         :: Maybe Int
-    , cardInfoName        :: Maybe Text
-    , cardInfoAddr1       :: Maybe Text
-    , cardInfoAddr2       :: Maybe Text
-    , cardInfoAddrZip     :: Maybe Text
-    , cardInfoAddrState   :: Maybe Text
-    , cardInfoAddrCountry :: Maybe Text
+data SubscriptionStatus
+    = Trialing
+    | Active
+    | PastDue
+    | Canceled
+    | Unpaid
+    deriving (Eq, Ord, Read, Show, Data, Typeable)
+$(deriveSafeCopy 0 'base ''SubscriptionStatus)
+
+instance FromJSON SubscriptionStatus where
+    parseJSON (String str)
+        | str == "trialing" = return Trialing
+        | str == "active"   = return Active
+        | str == "past_due" = return PastDue
+        | str == "canceled" = return Canceled
+        | str == "unpaid"   = return Unpaid
+    parseJSON _ = mzero
+
+data Subscription = Subscription
+    { subCancelAtPeriodEnd  :: Bool
+    , subCustomerId         :: CustomerId
+    , subPlan               :: Plan
+    , subQuantity           :: Integer
+    , subStart              :: Timestamp
+    , subStatus             :: SubscriptionStatus
+    , subCancelledAt        :: Maybe Timestamp
+    , subCurrentPeriodStart :: Maybe Timestamp
+    , subCurrentPeriodEnd   :: Maybe Timestamp
+    , subEndedAt            :: Maybe Timestamp
+    , subTrialStart         :: Maybe Timestamp
+    , subTrialEnd           :: Maybe Timestamp
     }
     deriving (Eq, Ord, Read, Show, Data, Typeable)
-$(deriveSafeCopy 0 'base ''CardInfo)
+$(deriveSafeCopy 0 'base ''Subscription)
 
-cardInfoPairs :: CardInfo -> [(ByteString, ByteString)]
-cardInfoPairs (CardInfo{..}) =
-    catMaybes [ Just  ("card[number]", Text.encodeUtf8 cardInfoNumber)
-              , Just  ("card[exp_month]", showBS cardInfoExpMonth)
-              , Just  ("card[exp_year]", showBS cardInfoExpYear)
-              , mbParam "card[cvc]"             cardInfoCvc         showBS 
-              , mbParam "card[name]"            cardInfoName        Text.encodeUtf8 
-              , mbParam "card[address_line1]"   cardInfoAddr1       Text.encodeUtf8 
-              , mbParam "card[address_line2]"   cardInfoAddr2       Text.encodeUtf8 
-              , mbParam "card[address_zip]"     cardInfoAddrZip     Text.encodeUtf8 
-              , mbParam "card[address_state]"   cardInfoAddrState   Text.encodeUtf8 
-              , mbParam "card[address_country]" cardInfoAddrCountry Text.encodeUtf8 
-              ]
+instance FromJSON Subscription where
+    parseJSON (Object obj) =
+        Subscription <$> obj .: "cancel_at_period_end"
+                     <*> obj .: "customer"
+                     <*> obj .: "plan"
+                     <*> obj .: "quantity"
+                     <*> obj .: "start"
+                     <*> obj .: "status"
+                     <*> obj .: "canceled_at"
+                     <*> obj .: "current_period_start"
+                     <*> obj .: "current_period_end"
+                     <*> obj .: "ended_at"
+                     <*> obj .: "trial_start"
+                     <*> obj .: "trial_end"
+    parseJSON _ = mzero
 
-------------------------------------------------------------------------------
--- CardToken
-------------------------------------------------------------------------------
-
-
-newtype CardTokenId = CardTokenId { unCardTokenId :: Text }
-    deriving (Eq, Ord, Read, Show, Data, Typeable, SafeCopy)
-
-data CardToken = CardToken
-    { cardTokenId       :: CardTokenId
-    , cardTokenLivemode :: Bool
-    , cardTokenCard     :: Card
-    , cardTokenCreated  :: Timestamp
-    , cardTokenUsed     :: Bool
-    }
-    deriving (Eq, Ord, Read, Show, Data, Typeable)
-$(deriveSafeCopy 0 'base ''CardToken)
-
-createCardToken :: CardInfo
-                -> StripeReq CardToken
-createCardToken cardInfo =
-    StripeReq { srUrl         = "https://api.stripe.com/v1/tokens"
-              , srQueryString = []
-              , srMethod      = SPost (cardInfoPairs cardInfo)
-              }
-
-getCardToken :: CardTokenId
-             -> StripeReq CardToken
-getCardToken cti =
-    StripeReq { srUrl         = "https://api.stripe.com/v1/tokens/" ++ Text.unpack (unCardTokenId cti)
-              , srQueryString = []
+updateSubscription :: CustomerId
+                   -> PlanId
+                   -> Maybe CouponId
+                   -> Maybe Bool
+                   -> Maybe Timestamp
+                   -> Maybe (Either CardTokenId CardInfo)
+                   -> Maybe Integer
+                   -> StripeReq Subscription
+updateSubscription cid planId mCouponId mProrate mTrialEnd mCard mQuantity =
+    StripeReq { srUrl         = "https://api.stripe.com/v1/customers/" ++ Text.unpack (unCustomerId cid) ++ "/subscription"
+              , srQueryString = params
               , srMethod      = SGet
               }
+    where
+      params = (catMaybes [ Just ("plan", Text.encodeUtf8 (unPlanId planId))
+                          , mbParam "coupon"    mCouponId (Text.encodeUtf8 . unCouponId)
+                          , mbParam "prorate"   mProrate (\p -> if p then "true" else "false")
+                          , mbParam "trial_end" mTrialEnd showBS
+                          , mbParam "quantity"  mQuantity showBS
+                          ]) ++ case mCard of
+                                  Nothing -> []
+                                  (Just (Left (CardTokenId cti))) -> [("card", Text.encodeUtf8 cti)]
+                                  (Just (Right cardInfo)) -> cardInfoPairs cardInfo
+
+cancelSubscription :: CustomerId
+                   -> Maybe Bool
+                   -> StripeReq Subscription
+cancelSubscription cid mAtPeriodEnd =
+    StripeReq { srUrl         = "https://api.stripe.com/v1/customers/" ++ Text.unpack (unCustomerId cid) ++ "/subscription"
+              , srQueryString = maybe [] (\b -> [("at_period_end", if b then "true" else "false")]) mAtPeriodEnd
+              , srMethod      = SDelete
+              }
+
+------------------------------------------------------------------------------
+-- Invoice
+------------------------------------------------------------------------------
+
+newtype InvoiceId = InvoiceId { unInvoiceId :: Text }
+    deriving (Eq, Ord, Read, Show, Data, Typeable, SafeCopy, FromJSON)
+
+newtype InvoiceItemId = InvoiceItemId { unInvoiceItemId :: Text }
+    deriving (Eq, Ord, Read, Show, Data, Typeable, SafeCopy, FromJSON)
+
+data InvoiceItem = InvoiceItem
+    { invoiceItemId          :: InvoiceItemId
+    , invoiceItemLivemode    :: Bool
+    , invoiceItemAmount      :: Cents
+    , invoiceItemCurrency    :: Currency
+    , invoiceItemCustomerId  :: CustomerId
+    , invoiceItemDate        :: Timestamp
+    , invoiceItemDescription :: Maybe Text
+    }
+    deriving (Eq, Ord, Read, Show, Data, Typeable)
+$(deriveSafeCopy 0 'base ''InvoiceItem)
+
+instance FromJSON InvoiceItem where
+    parseJSON (Object obj) =
+        InvoiceItem <$> obj .: "id"
+                    <*> obj .: "livemode"
+                    <*> obj .: "amount"
+                    <*> obj .: "currency"
+                    <*> obj .: "customer"
+                    <*> obj .: "date"
+                    <*> obj .: "description"
+    parseJSON _ = mzero
+
+newtype InvoiceProrationId = InvoiceProrationId { unInvoiceProrationId :: Text }
+    deriving (Eq, Ord, Read, Show, Data, Typeable, SafeCopy, FromJSON)
+
+data InvoiceProration = InvoiceProration
+    { invoiceProrationId          :: InvoiceProrationId
+    , invoiceProrationLivemode    :: Bool
+    , invoiceProrationAmount      :: Cents
+    , invoiceProrationCurrency    :: Currency
+    , invoiceProrationCustomerId  :: CustomerId
+    , invoiceProrationDate        :: Timestamp
+    , invoiceProrationDescription :: Maybe Text
+    , invoiceProrationInvoiceId   :: Maybe InvoiceId
+    }
+    deriving (Eq, Ord, Read, Show, Data, Typeable)
+$(deriveSafeCopy 0 'base ''InvoiceProration)
+
+instance FromJSON InvoiceProration where
+    parseJSON (Object obj) =
+        InvoiceProration <$> obj .: "id"
+                         <*> obj .: "livemode"
+                         <*> obj .: "amount"
+                         <*> obj .: "currency"
+                         <*> obj .: "customer"
+                         <*> obj .: "date"
+                         <*> obj .: "description"
+                         <*> obj .: "invoice"
+    parseJSON _ = mzero
+
+data Period = Period
+    { end   :: Timestamp
+    , start :: Timestamp
+    }
+    deriving (Eq, Ord, Read, Show, Data, Typeable)
+$(deriveSafeCopy 0 'base ''Period)
+
+instance FromJSON Period where
+    parseJSON (Object obj) =
+        Period <$> obj .: "end"
+               <*> obj .: "start"
+    parseJSON _ = mzero
+
+data InvoiceSubscription = InvoiceSubscription
+    { invoiceSubscriptionAmount   :: Cents
+    , invoiceSubscriptionPeriod   :: Period
+    , invoiceSubscriptionPlan     :: Plan
+    , invoiceSubscriptionQuantity :: Integer
+    }
+    deriving (Eq, Ord, Read, Show, Data, Typeable)
+$(deriveSafeCopy 0 'base ''InvoiceSubscription)
+
+instance FromJSON InvoiceSubscription where
+    parseJSON (Object obj) =
+        InvoiceSubscription <$> obj .: "amount"
+                            <*> obj .: "period"
+                            <*> obj .: "plan"
+                            <*> obj .: "quantity"
+    parseJSON _ = mzero
+
+data InvoiceLines = InvoiceLines
+    { invoiceItems         :: [InvoiceItem]
+    , invoiceProrations    :: [InvoiceProration]
+    , invoiceSubscriptions :: [InvoiceSubscription]
+    }
+    deriving (Eq, Ord, Read, Show, Data, Typeable)
+$(deriveSafeCopy 0 'base ''InvoiceLines)
+
+instance FromJSON InvoiceLines where
+    parseJSON (Object obj) =
+        InvoiceLines <$> obj .: "invoiceitems"
+                     <*> obj .: "prorations"
+                     <*> obj .: "subscriptions"
+    parseJSON _ = mzero
+
+data Invoice = Invoice
+    { invoiceId                 :: InvoiceId
+    , invoiceLivemode           :: Bool
+    , invoiceAmountDue          :: Cents
+    , invoiceAttemptCount       :: Integer
+    , invoiceAttempted          :: Bool
+    , invoiceClosed             :: Bool
+    , invoiceCurrency           :: Currency
+    , invoiceCustomerId         :: CustomerId
+    , invoiceDate               :: Timestamp
+    , invoiceLines              :: InvoiceLines
+    , invoicePaid               :: Bool
+    , invoicePeriodEnd          :: Timestamp
+    , invoicePeriodStart        :: Timestamp
+    , invoiceStartingBalance    :: Cents
+    , invoiceSubTotal           :: Cents
+    , invoiceTotal              :: Cents
+    , invoiceCharge             :: Maybe Text
+    , invoiceDiscount           :: Maybe Discount
+    , invoiceEndingBalance      :: Maybe Integer
+    , invoiceNextPaymentAttempt :: Maybe Timestamp
+    }
+    deriving (Eq, Ord, Read, Show, Data, Typeable)
+$(deriveSafeCopy 0 'base ''Invoice)
+
+instance FromJSON Invoice where
+    parseJSON (Object obj) =
+        Invoice <$> obj .: "id"
+                <*> obj .: "livemode"
+                <*> obj .: "amount_due"
+                <*> obj .: "attempt_count"
+                <*> obj .: "attempted"
+                <*> obj .: "closed"
+                <*> obj .: "currency"
+                <*> obj .: "customer"
+                <*> obj .: "date"
+                <*> obj .: "lines"
+                <*> obj .: "paid"
+                <*> obj .: "period_end"
+                <*> obj .: "period_start"
+                <*> obj .: "starting_balance"
+                <*> obj .: "subtotal"
+                <*> obj .: "total"
+                <*> obj .: "charge"
+                <*> obj .: "discount"
+                <*> obj .: "ending_balance"
+                <*> obj .: "next_payment_attempt"
+    parseJSON _ = mzero
 
 ------------------------------------------------------------------------------
 -- Charge
@@ -656,19 +908,6 @@ deleteCustomer cid =
               , srQueryString = []
               , srMethod      = SDelete
               }
-
-------------------------------------------------------------------------------
--- Discount
-------------------------------------------------------------------------------
-
-data Discount = Discount
-
-------------------------------------------------------------------------------
--- Subscription
-------------------------------------------------------------------------------
-
-data Subscription = Subscription
-
 
 ------------------------------------------------------------------------------
 -- 
