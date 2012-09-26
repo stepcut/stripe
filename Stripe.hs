@@ -522,6 +522,7 @@ data InvoiceItem = InvoiceItem
     , invoiceItemCustomerId  :: CustomerId
     , invoiceItemDate        :: Timestamp
     , invoiceItemDescription :: Maybe Text
+    , invoiceItemInvoiceId   :: InvoiceId
     }
     deriving (Eq, Ord, Read, Show, Data, Typeable)
 $(deriveSafeCopy 0 'base ''InvoiceItem)
@@ -535,6 +536,7 @@ instance FromJSON InvoiceItem where
                     <*> obj .: "customer"
                     <*> obj .: "date"
                     <*> obj .: "description"
+                    <*> obj .: "invoice"
     parseJSON _ = mzero
 
 newtype InvoiceProrationId = InvoiceProrationId { unInvoiceProrationId :: Text }
@@ -693,10 +695,10 @@ getInvoices :: Maybe CustomerId
             -> Maybe Offset
             -> StripeReq (List Invoice)
 getInvoices mCustomerId mCount mOffset =
-    StripeReq { srUrl         = "https://api.stripe.com/v1/invoices/"
+    StripeReq { srUrl         = "https://api.stripe.com/v1/invoices"
               , srQueryString = catMaybes [ mbParam "customer" mCustomerId (Text.encodeUtf8 . unCustomerId)
-                                          , mbParam "count"  mCount showBS
-                                          , mbParam "offset" mOffset showBS
+                                          , mbParam "count"    mCount  showBS
+                                          , mbParam "offset"   mOffset showBS
                                           ]
               , srMethod      = SGet
               }
@@ -710,6 +712,67 @@ getUpcomingInvoice cid =
               , srMethod      = SGet
               }
 
+------------------------------------------------------------------------------
+-- InvoiceItem
+------------------------------------------------------------------------------
+
+createInvoiceItem :: CustomerId
+                  -> Cents
+                  -> Currency
+                  -> Maybe InvoiceId
+                  -> Maybe Text
+                  -> StripeReq InvoiceItem
+createInvoiceItem customerId amount currency mInvoiceId mDescription =
+    StripeReq { srUrl         = "https://api.stripe.com/v1/invoiceitems"
+              , srQueryString = []
+              , srMethod      = SPost $ catMaybes [ Just ("customer", Text.encodeUtf8 (unCustomerId customerId))
+                                                  , Just ("amount"  , showBS amount)
+                                                  , Just ("currency", Text.encodeUtf8 currency)
+                                                  , mbParam "invoice"     mInvoiceId (Text.encodeUtf8 . unInvoiceId)
+                                                  , mbParam "description" mDescription Text.encodeUtf8
+                                                  ]
+              }
+
+getInvoiceItem :: InvoiceId
+               -> StripeReq InvoiceItem
+getInvoiceItem invoiceId =
+    StripeReq { srUrl         = "https://api.stripe.com/v1/invoiceitems/" ++ Text.unpack (unInvoiceId invoiceId)
+              , srQueryString = []
+              , srMethod      = SGet
+              }
+
+updateInvoiceItem :: InvoiceId
+                  -> Maybe Cents
+                  -> Maybe Text
+                  -> StripeReq InvoiceItem
+updateInvoiceItem invoiceId mAmount mDescription=
+    StripeReq { srUrl         = "https://api.stripe.com/v1/invoiceitems/" ++ Text.unpack (unInvoiceId invoiceId)
+              , srQueryString = []
+              , srMethod      = SPost $ catMaybes [ mbParam "amount"      mAmount      showBS
+                                                  , mbParam "description" mDescription Text.encodeUtf8
+                                                  ]
+              }
+
+deleteInvoiceItem :: InvoiceId
+                  -> StripeReq InvoiceItem
+deleteInvoiceItem invoiceId =
+    StripeReq { srUrl         = "https://api.stripe.com/v1/invoiceitems/" ++ Text.unpack (unInvoiceId invoiceId)
+              , srQueryString = []
+              , srMethod      = SDelete
+              }
+
+getInvoiceItems :: Maybe CustomerId
+                -> Maybe Count
+                -> Maybe Offset
+                -> StripeReq (List InvoiceItem)
+getInvoiceItems mCustomerId mCount mOffset =
+    StripeReq { srUrl         = "https://api.stripe.com/v1/invoiceitems"
+              , srQueryString = catMaybes [ mbParam "customer" mCustomerId (Text.encodeUtf8 . unCustomerId)
+                                          , mbParam "count"    mCount  showBS
+                                          , mbParam "offset"   mOffset showBS
+                                          ]
+              , srMethod      = SGet
+              }
 
 ------------------------------------------------------------------------------
 -- Charge
