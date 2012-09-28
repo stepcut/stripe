@@ -12,13 +12,13 @@ import qualified Data.Text.Encoding as Text
 import Stripe.Core         
 import Stripe.Token
 
-
+--- | A fee associate with a 'Charge'
 data FeeDetail = FeeDetail
-    { feeDetailAmount      :: Cents
-    , feeDetailCurrency    :: Currency
-    , feeDetailType        :: Text
-    , feeDetailApplication :: Maybe Text
-    , feeDetailDescription :: Maybe Text
+    { feeDetailAmount      :: Cents       -- ^ amount
+    , feeDetailCurrency    :: Currency    -- ^ currency
+    , feeDetailType        :: Text        -- ^ type
+    , feeDetailApplication :: Maybe Text  -- ^ application
+    , feeDetailDescription :: Maybe Text  -- ^ description
     }
     deriving (Eq, Ord, Read, Show, Data, Typeable)
 $(deriveSafeCopy 0 'base ''FeeDetail)
@@ -40,18 +40,18 @@ newtype ChargeId = ChargeId { unChargeId :: Text }
     deriving (Eq, Ord, Read, Show, Data, Typeable, SafeCopy, FromJSON)
              
 data Charge = Charge
-    { chargeId             :: ChargeId
-    , chargeLivemode       :: Bool
-    , chargeAmount         :: Cents
-    , chargeCard           :: Card
-    , chargeTimestamp      :: Timestamp
-    , chargeCurrency       :: Currency
-    , chargeDisputed       :: Bool
-    , chargeFee            :: Cents
-    , chargeFeeDetails     :: [FeeDetail]
-    , chargePaid           :: Bool
-    , chargeRefunded       :: Bool -- false for partial refund
-    , chargeAmountRefunded :: Maybe Cents
+    { chargeId             :: ChargeId    -- ^ charge id
+    , chargeLivemode       :: Bool        -- ^ livemode
+    , chargeAmount         :: Cents       -- ^ amount
+    , chargeCard           :: Card        -- ^ card
+    , chargeCreated        :: Timestamp   -- ^ created
+    , chargeCurrency       :: Currency    -- ^ currency
+    , chargeDisputed       :: Bool        -- ^ disputed (whether charge has been disputed by the customer)
+    , chargeFee            :: Cents       -- ^ fee
+    , chargeFeeDetails     :: [FeeDetail] -- ^ list of fees
+    , chargePaid           :: Bool        -- ^ paid
+    , chargeRefunded       :: Bool        -- ^ false for partial refund
+    , chargeAmountRefunded :: Maybe Cents 
     , chargeCustomer       :: Maybe CustomerId
     , chargeDescription    :: Maybe Text
     , chargeFailureMessage :: Maybe Text
@@ -93,10 +93,13 @@ instance FromJSON Charges where
                 <*> obj .: "data"
     parseJSON _ = mzero
 
-getCharges :: Maybe Count
-           -> Maybe Offset
-           -> Maybe CustomerId
-           -> StripeReq Charges
+-- | Returns a list of charges you've previously created. The charges
+-- are returned in sorted order, with the most recent charges
+-- appearing first.
+getCharges :: Maybe Count      -- ^ limit number of charges returned. default is 10. 
+           -> Maybe Offset     -- ^ offset into list of charges. default is 0.
+           -> Maybe CustomerId -- ^ only return charges for this customer id
+           -> StripeReq Charges 
 getCharges mCount mOffset mCustomerId =
     StripeReq { srUrl         = "https://api.stripe.com/v1/charges"
               , srQueryString = params

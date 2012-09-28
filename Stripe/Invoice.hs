@@ -1,4 +1,27 @@
 {-# LANGUAGE DeriveDataTypeable, GeneralizedNewtypeDeriving, OverloadedStrings, TemplateHaskell #-}
+{- |
+
+Invoices are statements of what a customer owes for a particular
+billing period, including subscriptions, invoice items, and any
+automatic proration adjustments if necessary.
+
+Once an 'Invoice' is created, payment is automatically attempted. Note
+that the payment, while automatic, does not happen exactly at the time
+of invoice creation. If you have configured webhooks, the invoice will
+wait until one hour after the last webhook is successfully sent (or
+the last webhook times out after failing).
+
+Any customer credit on the account is applied before determining how
+much is due for that invoice (the amount that will be actually
+charged). If the amount due for the invoice is less than 50 cents (the
+minimum for a charge), we add the amount to the customer's running
+account balance to be added to the next invoice. If this amount is
+negative, it will act as a credit to offset the next invoice. Note
+that the customer account balance does not include unpaid invoices; it
+only includes balances that need to be taken into account when
+calculating the amount due for the next invoice.
+
+-}
 module Stripe.Invoice where
 
 import Control.Applicative ((<$>), (<*>))
@@ -17,12 +40,19 @@ import Stripe.Plan         (Plan)
 -- Invoice
 ------------------------------------------------------------------------------
 
+-- | unique identifier for an 'Invoice'
 newtype InvoiceId = InvoiceId { unInvoiceId :: Text }
     deriving (Eq, Ord, Read, Show, Data, Typeable, SafeCopy, FromJSON)
 
+-- | unique identifier for an 'InvoiceItem'
 newtype InvoiceItemId = InvoiceItemId { unInvoiceItemId :: Text }
     deriving (Eq, Ord, Read, Show, Data, Typeable, SafeCopy, FromJSON)
 
+-- | Sometimes you want to add a charge or credit to a customer but
+-- only actually charge the customer's card at the end of a regular
+-- billing cycle. This is useful for combining several charges to
+-- minimize per-transaction fees or having Stripe tabulate your
+-- usage-based billing totals.
 data InvoiceItem = InvoiceItem
     { invoiceItemId          :: InvoiceItemId
     , invoiceItemLivemode    :: Bool
@@ -225,6 +255,7 @@ getUpcomingInvoice cid =
 -- InvoiceItem
 ------------------------------------------------------------------------------
 
+-- | Adds an arbitrary charge or credit to the customer's upcoming invoice.
 createInvoiceItem :: CustomerId
                   -> Cents
                   -> Currency

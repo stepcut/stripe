@@ -9,11 +9,27 @@ Build-type:          Simple
 Cabal-version:       >=1.6
 
 Library
-  Exposed-modules:     Stripe, Verbatim
+  Exposed-modules:     
+                       Stripe.Account
+                       Stripe.Charge
+                       Stripe.Core
+                       Stripe.Coupon
+                       Stripe.Customer
+                       Stripe.Discount
+                       Stripe.HttpConduit
+                       Stripe.Invoice
+                       Stripe.Plan
+                       Stripe.Subscription
+                       Stripe.Token
+--                       Verbatim
   Build-Depends:       base,
                        aeson == 0.6.*,
                        bytestring == 0.9.*,
                        conduit == 0.4.*,
                        http-conduit == 1.4.*,
+                       http-types == 0.7.*,
+                       monad-control        == 0.3.*,
+                       mtl                  >= 2.0 && <2.3,
                        safecopy == 0.6.*,
-                       text == 0.11.*
+                       text == 0.11.*,
+                       unordered-containers == 0.2.*

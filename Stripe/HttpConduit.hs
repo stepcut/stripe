@@ -1,4 +1,9 @@
 {-# LANGUAGE FlexibleContexts, OverloadedStrings, RecordWildCards #-}
+{- |
+
+Invoke a 'StripeReq' using @http-conduit@.
+
+-}
 module Stripe.HttpConduit where
 
 import Control.Monad.Trans (liftIO)
@@ -19,9 +24,10 @@ import Stripe.Core
 stripe :: ( MonadResource m
           , MonadBaseControl IO m
           , FromJSON a
-          ) => ApiKey
-       -> StripeReq a
-       -> Manager
+          ) =>
+          ApiKey      -- ^ Stripe 'ApiKey'
+       -> StripeReq a -- ^ request
+       -> Manager     -- ^ conduit 'Manager'
        -> m (Either StripeError a)
 stripe (ApiKey k) (StripeReq{..}) manager =
     do let req' = (fromJust $ parseUrl srUrl) { queryString = W.renderSimpleQuery False srQueryString 
