@@ -1,4 +1,4 @@
-Name:                stripe
+Name:                stripe-core
 Version:             0.1
 License:             BSD3
 License-file:        LICENSE
@@ -16,17 +16,13 @@ Library
                        Stripe.Coupon
                        Stripe.Customer
                        Stripe.Discount
-                       Stripe.HttpConduit
                        Stripe.Invoice
                        Stripe.Plan
                        Stripe.Subscription
                        Stripe.Token
---                       Verbatim
   Build-Depends:       base,
                        aeson == 0.6.*,
                        bytestring == 0.9.*,
-                       conduit == 0.4.*,
-                       http-conduit == 1.4.*,
                        http-types == 0.7.*,
                        monad-control        == 0.3.*,
                        mtl                  >= 2.0 && <2.3,

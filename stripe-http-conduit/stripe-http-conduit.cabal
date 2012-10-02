@@ -1,0 +1,22 @@
+name:                stripe-http-conduit
+version:             0.1.0.0
+synopsis:            binding to stripe payment API - uses http-conduits for the HTTP connection
+license:             BSD3
+license-file:        LICENSE
+author:              Jeremy Shaw
+maintainer:          jeremy@n-heptane.com
+category:            Web
+build-type:          Simple
+cabal-version:       >=1.8
+
+library
+  exposed-modules:     Stripe.HttpConduit
+  build-depends:       base ==4.5.*,
+                       mtl ==2.1.*,
+                       monad-control ==0.3.*,
+                       aeson ==0.6.*,
+                       conduit ==0.4.*,
+                       stripe-core == 0.1.*,
+                       text ==0.11.*,
+                       http-conduit ==1.4.*,
+                       http-types ==0.7.*
