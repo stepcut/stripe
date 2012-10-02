@@ -32,7 +32,7 @@ import Data.Maybe          (catMaybes)
 import Data.SafeCopy       (SafeCopy, base, deriveSafeCopy)
 import           Data.Text          as Text (Text, unpack)
 import qualified Data.Text.Encoding as Text
-import Stripe.Core         
+import Stripe.Core
 import Stripe.Discount     (Discount)
 import Stripe.Plan         (Plan)
 
@@ -106,6 +106,7 @@ instance FromJSON InvoiceProration where
                          <*> obj .: "invoice"
     parseJSON _ = mzero
 
+-- | a time period
 data Period = Period
     { end   :: Timestamp
     , start :: Timestamp
@@ -151,6 +152,30 @@ instance FromJSON InvoiceLines where
                      <*> obj .: "subscriptions"
     parseJSON _ = mzero
 
+-- Invoices are statements of what a customer owes for a particular billing period, including subscriptions, invoice items, and any automatic proration adjustments if necessary.
+--
+-- The invoice object contains a lines hash that contains information
+-- about the subscriptions and invoice items that have been applied to
+-- the invoice, as well as any prorations that Stripe has
+-- automatically calculated. Each line on the invoice has an amount
+-- attribute that represents the amount actually contributed to the
+-- invoice's total. For invoice items and prorations, the amount
+-- attribute is the same as for the invoice item or proration
+-- respectively. For subscriptions, the amount may be different from
+-- the plan's regular price depending on whether the invoice covers a
+-- trial period or the invoice period differs from the plan's usual
+-- interval.
+--
+-- The invoice object has both a subtotal and a total. The subtotal
+-- represents the total before any discounts, while the total is the
+-- final amount to be charged to the customer after all coupons have
+-- been applied.
+--
+-- The invoice also has a next_payment_attempt attribute that tells
+-- you the next time (as a UTC timestamp) payment for the invoice will
+-- be automatically attempted. For invoices that have been closed or
+-- that have reached the maximum number of retries (specified in your
+-- retry settings) , the next_payment_attempt will be null.
 data Invoice = Invoice
     { invoiceId                 :: InvoiceId
     , invoiceLivemode           :: Bool
@@ -200,6 +225,7 @@ instance FromJSON Invoice where
                 <*> obj .: "next_payment_attempt"
     parseJSON _ = mzero
 
+-- | Retrieves the 'Invoice' with the given ID.
 getInvoice :: InvoiceId
            -> StripeReq Invoice
 getInvoice iid =
@@ -208,8 +234,13 @@ getInvoice iid =
               , srMethod      = SGet
               }
 
+-- | Stripe automatically creates and then attempts to pay invoices
+-- for customers on subscriptions. We'll also retry unpaid invoices
+-- according to your retry settings. However, if you'd like to attempt
+-- to collect payment on an invoice out of the normal retry schedule
+-- or for some other reason, you can do so.
 payInvoice :: InvoiceId
-           -> Maybe Integer
+           -> Maybe Integer -- ^ depth (whatever that is..)
            -> StripeReq Invoice
 payInvoice iid mDepth =
     StripeReq { srUrl         = "https://api.stripe.com/v1/invoices/" ++ Text.unpack (unInvoiceId iid) ++ "/pay"
@@ -217,9 +248,13 @@ payInvoice iid mDepth =
               , srMethod      = SPost (maybe [] (\d -> [("depth", showBS d)]) mDepth)
               }
 
+-- | Until an invoice is paid, it is marked as open (closed=false). If
+-- you'd like to stop Stripe from automatically attempting payment on
+-- an invoice or would simply like to close the invoice out as no
+-- longer owed by the customer, you can update the closed parameter.
 updateInvoice :: InvoiceId
-              -> Maybe Bool
-              -> Maybe Integer
+              -> Maybe Bool    -- ^ Boolean representing whether an invoice is closed or not. To close an invoice, pass true.
+              -> Maybe Integer -- ^ Depth (whatever that is...)
               -> StripeReq Invoice
 updateInvoice iid mClosed mDepth =
     StripeReq { srUrl         = "https://api.stripe.com/v1/invoices/" ++ Text.unpack (unInvoiceId iid)
@@ -229,9 +264,10 @@ updateInvoice iid mClosed mDepth =
                                                   ]
               }
 
-getInvoices :: Maybe CustomerId
-            -> Maybe Count
-            -> Maybe Offset
+-- | You can list all invoices, or list the invoices for a specific customer.
+getInvoices :: Maybe CustomerId -- ^ The identifier of the customer whose invoices to return. If none is provided, all invoices will be returned.
+            -> Maybe Count      -- ^ A limit on the number of invoices to be returned. Count can range between 1 and 100 invoices. /default 10/
+            -> Maybe Offset     -- ^ An offset into your invoices array. The API will return the requested number of invoices starting at that offset. /default 0/
             -> StripeReq (List Invoice)
 getInvoices mCustomerId mCount mOffset =
     StripeReq { srUrl         = "https://api.stripe.com/v1/invoices"
@@ -242,7 +278,11 @@ getInvoices mCustomerId mCount mOffset =
               , srMethod      = SGet
               }
 
-
+-- | At any time, you can view the upcoming invoice for a
+-- customer. This will show you all the charges that are pending,
+-- including subscription renewal charges, invoice item charges,
+-- etc. It will also show you any discount that is applicable to the
+-- customer.
 getUpcomingInvoice :: CustomerId
                    -> StripeReq Invoice
 getUpcomingInvoice cid =
@@ -272,7 +312,7 @@ createInvoiceItem customerId amount currency mInvoiceId mDescription =
                                                   , mbParam "description" mDescription Text.encodeUtf8
                                                   ]
               }
-
+-- | Retrieves the 'InvoiceItem' with the given ID.
 getInvoiceItem :: InvoiceId
                -> StripeReq InvoiceItem
 getInvoiceItem invoiceId =
@@ -281,9 +321,12 @@ getInvoiceItem invoiceId =
               , srMethod      = SGet
               }
 
+-- | Updates the amount or description of an invoice item on an
+-- upcoming invoice. Updating an invoice item is only possible before
+-- the invoice it's attached to is closed.
 updateInvoiceItem :: InvoiceId
-                  -> Maybe Cents
-                  -> Maybe Text
+                  -> Maybe Cents -- ^ The integer amount in cents of the charge to be applied to the upcoming invoice. If you want to apply a credit to the customer's account, pass a negative amount.
+                  -> Maybe Text  -- ^ An arbitrary string which you can attach to the invoice item. The description is displayed in the invoice for easy tracking.
                   -> StripeReq InvoiceItem
 updateInvoiceItem invoiceId mAmount mDescription=
     StripeReq { srUrl         = "https://api.stripe.com/v1/invoiceitems/" ++ Text.unpack (unInvoiceId invoiceId)
@@ -293,6 +336,9 @@ updateInvoiceItem invoiceId mAmount mDescription=
                                                   ]
               }
 
+-- | Removes an invoice item from the upcoming invoice. Removing an
+-- invoice item is only possible before the invoice it's attached to
+-- is closed.
 deleteInvoiceItem :: InvoiceId
                   -> StripeReq InvoiceItem
 deleteInvoiceItem invoiceId =
@@ -301,9 +347,12 @@ deleteInvoiceItem invoiceId =
               , srMethod      = SDelete
               }
 
-getInvoiceItems :: Maybe CustomerId
-                -> Maybe Count
-                -> Maybe Offset
+-- | Returns a list of your invoice items. Invoice Items are returned
+-- sorted by creation date, with the most recently created invoice
+-- items appearing first.
+getInvoiceItems :: Maybe CustomerId -- ^ The identifier of the customer whose invoice items to return. If none is provided, all invoice items will be returned.
+                -> Maybe Count      -- ^ A limit on the number of invoice items to be returned. Count can range between 1 and 100 items. /default 10/
+                -> Maybe Offset     -- ^ An offset into your invoice items array. The API will return the requested number of invoice items starting at that offset. /default 0/
                 -> StripeReq (List InvoiceItem)
 getInvoiceItems mCustomerId mCount mOffset =
     StripeReq { srUrl         = "https://api.stripe.com/v1/invoiceitems"

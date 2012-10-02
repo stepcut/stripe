@@ -1,4 +1,8 @@
 {-# LANGUAGE DeriveDataTypeable, GeneralizedNewtypeDeriving, OverloadedStrings, TemplateHaskell #-}
+{- |
+
+
+-}
 module Stripe.Account where
 
 import Control.Applicative ((<$>), (<*>))
@@ -18,6 +22,10 @@ import Stripe.Core
 newtype AccountId = AccountId { unAccountId :: Text }
     deriving (Eq, Ord, Read, Show, Data, Typeable, SafeCopy, FromJSON)
 
+-- | This is an object representing your Stripe account. You can
+-- retrieve it to see properties on the account like its current
+-- e-mail address or if the account is enabled yet to make live
+-- charges.
 data Account = Account
     { accountId :: AccountId
     , accountChargeEnabled :: Bool
@@ -39,6 +47,8 @@ instance FromJSON Account where
                 <*> obj .: "statement_descriptor"
     parseJSON _ = mzero
 
+-- | Retrieves the details of the account, based on the API key that
+-- was used to make the request.
 getAccount :: StripeReq Account
 getAccount =
     StripeReq { srUrl         = "https://api.stripe.com/v1/account"
