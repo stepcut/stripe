@@ -31,7 +31,7 @@ boolBS False = "false"
 mbParam :: ByteString         -- ^ param name
         -> Maybe a            -- ^ param value
         -> (a -> ByteString)  -- ^ function to convert 'a' to a 'ByteString'
-        -> Maybe (ByteString, ByteString) 
+        -> Maybe (ByteString, ByteString)
 mbParam _ Nothing _ = Nothing
 mbParam name (Just v) show' = Just (name, show' v)
 
@@ -78,6 +78,8 @@ data List a = List
     { count :: Integer
     , data_ :: [a]
     }
+    deriving (Eq, Ord, Read, Show, Data, Typeable)
+$(deriveSafeCopy 0 'base ''List)
 
 instance (FromJSON a) => FromJSON (List a) where
     parseJSON (Object obj) =

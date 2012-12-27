@@ -55,7 +55,7 @@ type Currency = Text
 usd :: Currency
 usd = "usd"
 
-type Timestamp = Integer    
+type Timestamp = Integer
 type Count  = Integer
 type Offset = Integer
 
@@ -222,7 +222,7 @@ data CardInfo = CardInfo
     { cardInfoNumber      :: Text
     , cardInfoExpMonth    :: Int
     , cardInfoExpYear     :: Int
-    , cardInfoCvc         :: Maybe Int
+    , cardInfoCvc         :: Maybe Text
     , cardInfoName        :: Maybe Text
     , cardInfoAddr1       :: Maybe Text
     , cardInfoAddr2       :: Maybe Text
@@ -238,19 +238,18 @@ cardInfoPairs (CardInfo{..}) =
     catMaybes [ Just  ("card[number]", Text.encodeUtf8 cardInfoNumber)
               , Just  ("card[exp_month]", showBS cardInfoExpMonth)
               , Just  ("card[exp_year]", showBS cardInfoExpYear)
-              , mbParam "card[cvc]"             cardInfoCvc         showBS 
-              , mbParam "card[name]"            cardInfoName        Text.encodeUtf8 
-              , mbParam "card[address_line1]"   cardInfoAddr1       Text.encodeUtf8 
-              , mbParam "card[address_line2]"   cardInfoAddr2       Text.encodeUtf8 
-              , mbParam "card[address_zip]"     cardInfoAddrZip     Text.encodeUtf8 
-              , mbParam "card[address_state]"   cardInfoAddrState   Text.encodeUtf8 
-              , mbParam "card[address_country]" cardInfoAddrCountry Text.encodeUtf8 
+              , mbParam "card[cvc]"             cardInfoCvc         Text.encodeUtf8
+              , mbParam "card[name]"            cardInfoName        Text.encodeUtf8
+              , mbParam "card[address_line1]"   cardInfoAddr1       Text.encodeUtf8
+              , mbParam "card[address_line2]"   cardInfoAddr2       Text.encodeUtf8
+              , mbParam "card[address_zip]"     cardInfoAddrZip     Text.encodeUtf8
+              , mbParam "card[address_state]"   cardInfoAddrState   Text.encodeUtf8
+              , mbParam "card[address_country]" cardInfoAddrCountry Text.encodeUtf8
               ]
 
 ------------------------------------------------------------------------------
 -- CardToken
 ------------------------------------------------------------------------------
-
 
 newtype CardTokenId = CardTokenId { unCardTokenId :: Text }
     deriving (Eq, Ord, Read, Show, Data, Typeable, SafeCopy)
@@ -924,7 +923,7 @@ getInvoiceItems mCustomerId mCount mOffset =
 
 newtype ChargeId = ChargeId { unChargeId :: Text }
     deriving (Eq, Ord, Read, Show, Data, Typeable, SafeCopy, FromJSON)
-             
+
 data Charge = Charge
     { chargeId             :: ChargeId
     , chargeLivemode       :: Bool
@@ -1002,7 +1001,7 @@ data ChargeTo
 $(deriveSafeCopy 0 'base ''ChargeTo)
 
 createCharge :: Cents  -- ^ amount
-             -> Currency 
+             -> Currency
              -> ChargeTo
              -> Maybe Text -- ^ description
              -> StripeReq Charge
@@ -1015,7 +1014,7 @@ createCharge amount currency chargeTo description =
       params =
                [ ("amount", showBS amount)
                , ("currency", Text.encodeUtf8 currency)
-               ] ++ 
+               ] ++
                (case chargeTo of
                    (CS (CustomerId  ci)) ->
                        [ ("customer", Text.encodeUtf8 ci)]
@@ -1193,7 +1192,7 @@ data Event = Event
     { eventId :: EventId
     , eventLivemode :: Bool
     , eventCreated :: Timestamp
---    , eventData 
+--    , eventData
 -}
 
 ------------------------------------------------------------------------------
@@ -1208,8 +1207,8 @@ stripe :: ( MonadResource m
        -> Manager
        -> m (Either StripeError a)
 stripe (ApiKey k) (StripeReq{..}) manager =
-    do let req' = (fromJust $ parseUrl srUrl) { queryString = W.renderSimpleQuery False srQueryString 
-                                              } 
+    do let req' = (fromJust $ parseUrl srUrl) { queryString = W.renderSimpleQuery False srQueryString
+                                              }
            req = case srMethod of
                    SGet -> req'
                    (SPost params) -> urlEncodedBody params req'

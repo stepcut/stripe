@@ -26,7 +26,7 @@ import Data.Maybe          (catMaybes)
 import Data.SafeCopy       (SafeCopy, base, deriveSafeCopy)
 import           Data.Text          as Text (Text, unpack)
 import qualified Data.Text.Encoding as Text
-import Stripe.Core         
+import Stripe.Core
 
 ------------------------------------------------------------------------------
 -- CardInfo
@@ -38,7 +38,7 @@ data CardInfo = CardInfo
     { cardInfoNumber      :: Text        -- ^ The card number, as a string without any separators.
     , cardInfoExpMonth    :: Int         -- ^ Two digit number representing the card's expiration month.
     , cardInfoExpYear     :: Int         -- ^ Two digit number representing the card's expiration month.
-    , cardInfoCvc         :: Maybe Int   -- ^ /highly recommended/. Card security code
+    , cardInfoCvc         :: Maybe Text   -- ^ /highly recommended/. Card security code
     , cardInfoName        :: Maybe Text  -- ^ Cardholder's full name.
     , cardInfoAddr1       :: Maybe Text  -- ^ Address Line 1
     , cardInfoAddr2       :: Maybe Text  -- ^ Address Line 2
@@ -56,13 +56,13 @@ cardInfoPairs (CardInfo{..}) =
     catMaybes [ Just  ("card[number]", Text.encodeUtf8 cardInfoNumber)
               , Just  ("card[exp_month]", showBS cardInfoExpMonth)
               , Just  ("card[exp_year]", showBS cardInfoExpYear)
-              , mbParam "card[cvc]"             cardInfoCvc         showBS 
-              , mbParam "card[name]"            cardInfoName        Text.encodeUtf8 
-              , mbParam "card[address_line1]"   cardInfoAddr1       Text.encodeUtf8 
-              , mbParam "card[address_line2]"   cardInfoAddr2       Text.encodeUtf8 
-              , mbParam "card[address_zip]"     cardInfoAddrZip     Text.encodeUtf8 
-              , mbParam "card[address_state]"   cardInfoAddrState   Text.encodeUtf8 
-              , mbParam "card[address_country]" cardInfoAddrCountry Text.encodeUtf8 
+              , mbParam "card[cvc]"             cardInfoCvc         Text.encodeUtf8
+              , mbParam "card[name]"            cardInfoName        Text.encodeUtf8
+              , mbParam "card[address_line1]"   cardInfoAddr1       Text.encodeUtf8
+              , mbParam "card[address_line2]"   cardInfoAddr2       Text.encodeUtf8
+              , mbParam "card[address_zip]"     cardInfoAddrZip     Text.encodeUtf8
+              , mbParam "card[address_state]"   cardInfoAddrState   Text.encodeUtf8
+              , mbParam "card[address_country]" cardInfoAddrCountry Text.encodeUtf8
               ]
 
 ------------------------------------------------------------------------------
@@ -82,7 +82,7 @@ data CardToken = CardToken
     { cardTokenId       :: CardTokenId
     , cardTokenLivemode :: Bool
     , cardTokenCard     :: Card         -- ^ card used to make the 'Charge'
-    , cardTokenCreated  :: Timestamp    
+    , cardTokenCreated  :: Timestamp
     , cardTokenUsed     :: Bool         -- ^ Whether or not this token has already been used (tokens can be used only once)
     }
     deriving (Eq, Ord, Read, Show, Data, Typeable)

@@ -17,7 +17,10 @@ import Data.Maybe          (catMaybes)
 import Data.SafeCopy       (SafeCopy, base, deriveSafeCopy)
 import           Data.Text as Text (Text,unpack)
 import qualified Data.Text.Encoding as Text
-import Stripe.Core
+import Stripe.Core         ( Card, Cents, Count, CustomerId(..), Offset
+                           , SMethod(SDelete, SGet, SPost), StripeReq(..)
+                           , Timestamp, mbParam, showBS
+                           )
 import Stripe.Coupon       (CouponId(..))
 import Stripe.Discount     (Discount)
 import Stripe.Plan         (PlanId(..))
@@ -75,11 +78,11 @@ createCustomer mCard mCouponId mEmail mDescription mBalance mPlanId mTimestamp m
                   SPost  $
                         cardParams mCard ++
                         (catMaybes
-                      [ mbParam "coupon"          mCouponId    (showBS . unCouponId)
+                      [ mbParam "coupon"          mCouponId    (Text.encodeUtf8 . unCouponId)
                       , mbParam "email"           mEmail       Text.encodeUtf8
                       , mbParam "description"     mDescription Text.encodeUtf8
                       , mbParam "account_balance" mBalance     showBS
-                      , mbParam "plan"            mPlanId      (showBS . unPlanId)
+                      , mbParam "plan"            mPlanId      (Text.encodeUtf8 . unPlanId)
                       , mbParam "trial_end"       mTimestamp   showBS
                       , mbParam "quantity"        mQuantity    showBS
                       ])
@@ -117,7 +120,7 @@ updateCustomer cid mCard mCouponId mEmail mDescription mBalance =
                   SPost  $
                         cardParams mCard ++
                         (catMaybes
-                      [ mbParam "coupon"          mCouponId    (showBS . unCouponId)
+                      [ mbParam "coupon"          mCouponId    (Text.encodeUtf8 . unCouponId)
                       , mbParam "email"           mEmail       Text.encodeUtf8
                       , mbParam "description"     mDescription Text.encodeUtf8
                       , mbParam "account_balance" mBalance     showBS

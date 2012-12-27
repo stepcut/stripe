@@ -42,7 +42,7 @@ instance FromJSON Interval where
     parseJSON _ = mzero
 
 
--- | A subscription plain
+-- | A subscription plan
 data Plan = Plan
     { planId              :: PlanId        -- ^ unique id
     , planLivemode        :: Bool

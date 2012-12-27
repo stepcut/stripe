@@ -30,15 +30,15 @@ stripe :: ( MonadResource m
        -> Manager     -- ^ conduit 'Manager'
        -> m (Either StripeError a)
 stripe (ApiKey k) (StripeReq{..}) manager =
-    do let req' = (fromJust $ parseUrl srUrl) { queryString = W.renderSimpleQuery False srQueryString 
-                                              } 
+    do let req' = (fromJust $ parseUrl srUrl) { queryString = W.renderSimpleQuery False srQueryString
+                                              }
            req = case srMethod of
                    SGet -> req'
                    (SPost params) -> urlEncodedBody params req'
                    SDelete        -> req' { method = "DELETE" }
        res <- httpLbs (applyBasicAuth k "" (req { checkStatus = \_ _ -> Nothing})) manager
-       liftIO $ print $ responseStatus res
-       liftIO $ putStrLn $ Text.unpack $ Text.decodeUtf8 $ toStrict $ responseBody  res
+--       liftIO $ print $ responseStatus res
+--       liftIO $ putStrLn $ Text.unpack $ Text.decodeUtf8 $ toStrict $ responseBody  res
        if W.statusCode (responseStatus res) == 200
           then return $ Right $ fromJust $ decode' (responseBody res)
           else return $ Left  $ fromJust $ decode' (responseBody res)
