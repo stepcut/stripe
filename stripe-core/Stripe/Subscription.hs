@@ -115,8 +115,8 @@ updateSubscription :: CustomerId
                    -> StripeReq Subscription
 updateSubscription cid planId mCouponId mProrate mTrialEnd mCard mQuantity =
     StripeReq { srUrl         = "https://api.stripe.com/v1/customers/" ++ Text.unpack (unCustomerId cid) ++ "/subscription"
-              , srQueryString = params
-              , srMethod      = SGet
+              , srQueryString = []
+              , srMethod      = SPost params
               }
     where
       params = (catMaybes [ Just ("plan", Text.encodeUtf8 (unPlanId planId))
