@@ -36,7 +36,7 @@ stripe (ApiKey k) (StripeReq{..}) manager =
                    SGet -> req'
                    (SPost params) -> urlEncodedBody params req'
                    SDelete        -> req' { method = "DELETE" }
-       res <- httpLbs (applyBasicAuth k "" (req { checkStatus = \_ _ -> Nothing})) manager
+       res <- httpLbs (applyBasicAuth k "" (req { checkStatus = \_ _ _ -> Nothing})) manager
 --       liftIO $ print $ responseStatus res
 --       liftIO $ putStrLn $ Text.unpack $ Text.decodeUtf8 $ toStrict $ responseBody  res
        if W.statusCode (responseStatus res) == 200
