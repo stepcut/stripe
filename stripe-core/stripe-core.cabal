@@ -1,5 +1,5 @@
 Name:                stripe-core
-Version:             0.1
+Version:             0.1.1
 License:             BSD3
 License-file:        LICENSE
 Author:              Jeremy Shaw
@@ -27,5 +27,5 @@ Library
                        monad-control        == 0.3.*,
                        mtl                  >= 2.0 && <2.3,
                        safecopy             == 0.8.*,
-                       text                 == 0.11.*,
+                       text                 >= 0.11 && < 1.1,
                        unordered-containers == 0.2.*
