@@ -8,9 +8,9 @@ module Stripe.HttpConduit where
 
 import Control.Monad.Trans (liftIO)
 import Control.Monad.Trans.Control
-import Data.Aeson (FromJSON, decode')
+import Data.Aeson          (FromJSON, eitherDecode')
 import Data.Conduit
-import Data.Maybe (fromJust)
+import Data.Maybe          (fromJust)
 import qualified Data.Text          as Text
 import qualified Data.Text.Encoding as Text
 import Network.HTTP.Conduit
@@ -40,5 +40,9 @@ stripe (ApiKey k) (StripeReq{..}) manager =
 --       liftIO $ print $ responseStatus res
 --       liftIO $ putStrLn $ Text.unpack $ Text.decodeUtf8 $ toStrict $ responseBody  res
        if W.statusCode (responseStatus res) == 200
-          then return $ Right $ fromJust $ decode' (responseBody res)
-          else return $ Left  $ fromJust $ decode' (responseBody res)
+          then case eitherDecode' (responseBody res) of
+                 (Left e)  -> return $ Left $ StripeAesonError e
+                 (Right r) -> return $ Right r
+          else case eitherDecode' (responseBody res) of
+                 (Left e) -> return  $ Left $ StripeAesonError e
+                 (Right r) -> return $ Left r
