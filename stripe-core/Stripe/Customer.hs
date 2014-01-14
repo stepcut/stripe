@@ -11,14 +11,14 @@ module Stripe.Customer where
 
 import Control.Applicative ((<$>), (<*>))
 import Control.Monad       (mzero)
-import Data.Aeson          (FromJSON(..), Value(..), (.:))
+import Data.Aeson          (FromJSON(..), Value(..), (.:), Object)
 import Data.Data           (Data, Typeable)
 import Data.Maybe          (catMaybes)
 import Data.SafeCopy       (SafeCopy, base, deriveSafeCopy)
 import           Data.Text as Text (Text,unpack)
 import qualified Data.Text.Encoding as Text
-import Stripe.Core         ( Card, Cents, Count, CustomerId(..), Offset
-                           , SMethod(SDelete, SGet, SPost), StripeReq(..)
+import Stripe.Core         ( Card, CardId(..), Currency, Cents, Count, CustomerId(..), Offset
+                           , List(..), SMethod(SDelete, SGet, SPost), StripeReq(..)
                            , Timestamp, mbParam, showBS
                            )
 import Stripe.Coupon       (CouponId(..))
@@ -34,14 +34,18 @@ import Stripe.Token        (CardInfo(..), CardTokenId(..), cardInfoPairs)
 -- | a 'Customer'
 data Customer = Customer
     { customerId             :: CustomerId
+    , customerObject         :: Text
     , customerLivemode       :: Bool
-    , customerCreated        :: Timestamp
+--    , customerCards          :: (List Card)
+    , customerCreated        :: Maybe Timestamp
     , customerAccountBalance :: Maybe Integer      -- ^ Current balance, if any, being stored on the customer's account. If negative, the customer has credit to apply to the next invoice. If positive, the customer has an amount owed that will be added to the next invoice. The balance does not refer to any unpaid invoices; it solely takes into account amounts that have yet to be successfully applied to any invoice. This balance is only taken into account for recurring charges.
-    , customerActiveCard     :: Maybe Card         -- ^ Customer 'Card'
+    , customerCurrency       :: Maybe Currency
+    , customerDefaultCard    :: Maybe CardId       -- ^ Customer 'CardId'
     , customerDeliquent      :: Maybe Bool         -- ^ Whether or not the latest charge for the customer's latest invoice has failed
     , customerDescription    :: Maybe Text         -- ^ description
     , customerDiscount       :: Maybe Discount     -- ^ customer 'Discount'
     , customerEmail          :: Maybe Text         -- ^ customer email
+--    , customerMetaData       :: Maybe Object
     , customerSubscription   :: Maybe Subscription -- ^ the current 'Subscription' on the customer
     }
     deriving (Eq, Ord, Read, Show, Data, Typeable)
@@ -50,14 +54,18 @@ $(deriveSafeCopy 0 'base ''Customer)
 instance FromJSON Customer where
     parseJSON (Object obj) =
         Customer <$> obj .: "id"
+                 <*> obj .: "object"
                  <*> obj .: "livemode"
+--                 <*> obj .: "cards"
                  <*> obj .: "created"
                  <*> obj .: "account_balance"
-                 <*> obj .: "active_card"
+                 <*> obj .: "currency"
+                 <*> obj .: "default_card"
                  <*> obj .: "delinquent"
                  <*> obj .: "description"
                  <*> obj .: "discount"
                  <*> obj .: "email"
+--                 <*> obj .: "metadata"
                  <*> obj .: "subscription"
     parseJSON _ = mzero
 

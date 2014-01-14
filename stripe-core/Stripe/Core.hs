@@ -2,16 +2,18 @@
 module Stripe.Core where
 
 import Control.Applicative ((<$>), (<*>))
-import Control.Monad (mzero)
+import Control.Monad       (mzero)
 import Data.Data
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Lazy as BL
 import Data.Aeson
 import qualified Data.HashMap.Strict as HashMap
-import Data.Monoid (mconcat)
-import Data.SafeCopy (SafeCopy, base, deriveSafeCopy)
-import Data.String   (fromString)
-import Data.Text (Text)
+import Data.Monoid         (mconcat)
+import Data.Ratio          ((%))
+import Data.SafeCopy       (SafeCopy, base, deriveSafeCopy)
+import Data.String         (fromString)
+import Data.Text           (Text)
+import Numeric             (fromRat, showFFloat)
 
 -- | convert a lazy 'ByteString' to a strict 'ByteString'
 toStrict :: BL.ByteString -> ByteString
@@ -75,15 +77,19 @@ type Offset = Integer
 -- | a list type that includes a count of the number of elements
 -- FIXME: should this also have an offset? or is it even correct to have count?
 data List a = List
-    { count :: Integer
-    , data_ :: [a]
+    { lobject :: String
+    , count   :: Integer
+    , url     :: Text
+    , data_   :: [a]
     }
     deriving (Eq, Ord, Read, Show, Data, Typeable)
 $(deriveSafeCopy 0 'base ''List)
 
 instance (FromJSON a) => FromJSON (List a) where
     parseJSON (Object obj) =
-        List <$> obj .: "count"
+        List <$> obj .: "object"
+             <*> obj .: "count"
+             <*> obj .: "url"
              <*> obj .: "data"
     parseJSON _ = mzero
 
@@ -145,6 +151,7 @@ data StripeError = StripeError
     , code      :: Maybe CardError -- ^ For card errors, additional information about the user-friendly message to display for this error (e.g. @"Your card was declined."@)
     , param     :: Maybe Text      -- ^ The parameter the error relates to if the error is parameter-specific. You can use this to display a message near the correct form field, for example.
     }
+    | StripeAesonError String
     deriving (Eq, Ord, Read, Show, Data, Typeable)
 $(deriveSafeCopy 0 'base ''StripeError)
 
@@ -176,9 +183,16 @@ instance FromJSON Check where
     parseJSON Null = return Unchecked
     parseJSON _    = mzero
 
+-- | a unique id for a 'Card'
+--
+-- see also: 'Card'
+newtype CardId = CardId { unCardId :: Text }
+    deriving (Eq, Ord, Read, Show, Data, Typeable, SafeCopy, FromJSON)
+
 -- | describes the card used to make a 'Charge'
 data Card = Card
-    { cardExpMonth       :: Int
+    { cardId             :: CardId
+    , cardExpMonth       :: Int
     , cardExpYear        :: Int
     , cardFingerprint    :: Text
     , cardLast4          :: Text
@@ -200,7 +214,8 @@ $(deriveSafeCopy 0 'base ''Card)
 
 instance FromJSON Card where
     parseJSON (Object obj) =
-        Card <$> obj .: "exp_month"
+        Card <$> obj .: "id"
+             <*> obj .: "exp_month"
              <*> obj .: "exp_year"
              <*> obj .: "fingerprint"
              <*> obj .: "last4"
@@ -220,6 +235,10 @@ instance FromJSON Card where
 
 -- | cents
 type Cents = Integer
+
+showCentsAsDollars :: Cents -> String
+showCentsAsDollars cents =
+    showFFloat (Just 2) (fromRat $ cents % (100 :: Integer)) ""
 
 -- | a unique id for a 'Customer'
 --
