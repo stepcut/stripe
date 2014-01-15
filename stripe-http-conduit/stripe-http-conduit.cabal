@@ -16,7 +16,7 @@ library
                        monad-control == 0.3.*,
                        aeson         == 0.6.*,
                        conduit       == 1.0.*,
-                       stripe-core   == 0.1.*,
+                       stripe-core   == 0.2.*,
                        text          >= 0.11 && < 1.1,
                        http-conduit  >= 1.9 && < 2.1,
                        http-types    == 0.8.*
