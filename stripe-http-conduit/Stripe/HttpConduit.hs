@@ -30,7 +30,8 @@ stripe :: ( MonadResource m
        -> Manager     -- ^ conduit 'Manager'
        -> m (Either StripeError a)
 stripe (ApiKey k) (StripeReq{..}) manager =
-    do let req' = (fromJust $ parseUrl srUrl) { queryString = W.renderSimpleQuery False srQueryString
+    do let req' = (fromJust $ parseUrl srUrl) { queryString     = W.renderSimpleQuery False srQueryString
+                                              , responseTimeout = Just (60 * 10^6)
                                               }
            req = case srMethod of
                    SGet -> req'
