@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveDataTypeable, GeneralizedNewtypeDeriving, OverloadedStrings, TemplateHaskell #-}
+{-# LANGUAGE DeriveDataTypeable, GeneralizedNewtypeDeriving, OverloadedStrings, TemplateHaskell, TypeFamilies, RecordWildCards #-}
 {- |
 
 Subscriptions allow you to charge a customer's card on a recurring
@@ -13,7 +13,7 @@ import Control.Monad       (mzero)
 import Data.Aeson          (FromJSON(..), Value(..), (.:))
 import Data.Data           (Data, Typeable)
 import Data.Maybe          (catMaybes)
-import Data.SafeCopy       (SafeCopy, base, deriveSafeCopy)
+import Data.SafeCopy       (Migrate(..), SafeCopy, base, deriveSafeCopy, extension)
 import           Data.Text          as Text (Text, unpack)
 import qualified Data.Text.Encoding as Text
 import Stripe.Core
@@ -35,6 +35,9 @@ data SubscriptionStatus
     deriving (Eq, Ord, Read, Show, Data, Typeable)
 $(deriveSafeCopy 0 'base ''SubscriptionStatus)
 
+newtype SubscriptionId = SubscriptionId { unSubscriptionId :: Text }
+    deriving (Eq, Ord, Read, Show, Data, Typeable, SafeCopy, FromJSON)
+
 instance FromJSON SubscriptionStatus where
     parseJSON (String str)
         | str == "trialing" = return Trialing
@@ -45,13 +48,33 @@ instance FromJSON SubscriptionStatus where
     parseJSON _ = mzero
 
 -- | A 'Subscription' to 'Plan'
+data Subscription_0 = Subscription_0
+    { subCancelAtPeriodEnd_0  :: Bool               -- ^ If the subscription has been canceled with the at_period_end flag set to true, cancel_at_period_end on the subscription will be true. You can use this attribute to determine whether a subscription that has a status of active is scheduled to be canceled at the end of the current period.
+    , subCustomerId_0         :: CustomerId         -- ^ 'CustomerId'
+    , subPlan_0               :: Plan               -- ^ 'Plan' the customer is subscribed to
+    , subQuantity_0           :: Integer            -- ^ The quantity you'd like to apply to the subscription you're creating.
+    , subStart_0              :: Timestamp          -- ^ Date the subscription started
+    , subStatus_0             :: SubscriptionStatus -- ^ A subscription still in its trial period is 'Trialing' and moves to 'Active' when the trial period is over. When payment to renew the subscription fails, the subscription becomes 'PastDue.' After Stripe has exhausted all payment retry attempts, the subscription ends up with a status of either 'Canceled' or 'Unpaid' depending on your retry settings.
+    , subCancelledAt_0        :: Maybe Timestamp    -- ^ If the subscription has been canceled, the date of that cancellation. If the subscription was canceled with 'subCancelAtPeriodEnd', 'subCanceledAt' will still reflect the date of the initial cancellation request, not the end of the subscription period when the subscription is automatically moved to a canceled state.
+    , subCurrentPeriodEnd_0   :: Maybe Timestamp    -- ^ End of the current period that the subscription has been invoiced for. At the end of this period, a new invoice will be created.
+    , subCurrentPeriodStart_0 :: Maybe Timestamp    -- ^ Start of the current period that the subscription has been invoiced for
+    , subEndedAt_0            :: Maybe Timestamp    -- ^ If the subscription has ended (either because it was canceled or because the customer was switched to a subscription to a new plan), the date the subscription ended
+    , subTrialEnd_0           :: Maybe Timestamp    -- ^ If the subscription has a trial, the end of that trial.
+    , subTrialStart_0         :: Maybe Timestamp    -- ^ If the subscription has a trial, the beginning of that trial.
+    }
+    deriving (Eq, Ord, Read, Show, Data, Typeable)
+$(deriveSafeCopy 0 'base ''Subscription_0)
+
+-- | A 'Subscription' to 'Plan'
 data Subscription = Subscription
-    { subCancelAtPeriodEnd  :: Bool               -- ^ If the subscription has been canceled with the at_period_end flag set to true, cancel_at_period_end on the subscription will be true. You can use this attribute to determine whether a subscription that has a status of active is scheduled to be canceled at the end of the current period.
+    { subSubscriptionId     :: SubscriptionId
+    , subCancelAtPeriodEnd  :: Bool               -- ^ If the subscription has been canceled with the at_period_end flag set to true, cancel_at_period_end on the subscription will be true. You can use this attribute to determine whether a subscription that has a status of active is scheduled to be canceled at the end of the current period.
     , subCustomerId         :: CustomerId         -- ^ 'CustomerId'
     , subPlan               :: Plan               -- ^ 'Plan' the customer is subscribed to
     , subQuantity           :: Integer            -- ^ The quantity you'd like to apply to the subscription you're creating.
     , subStart              :: Timestamp          -- ^ Date the subscription started
     , subStatus             :: SubscriptionStatus -- ^ A subscription still in its trial period is 'Trialing' and moves to 'Active' when the trial period is over. When payment to renew the subscription fails, the subscription becomes 'PastDue.' After Stripe has exhausted all payment retry attempts, the subscription ends up with a status of either 'Canceled' or 'Unpaid' depending on your retry settings.
+    , subAppFeePercent      :: Maybe Int          -- ^ A positive decimal that represents the fee percentage of the subscription invoice amount that will be transferred to the application owner’s Stripe account each billing period.
     , subCancelledAt        :: Maybe Timestamp    -- ^ If the subscription has been canceled, the date of that cancellation. If the subscription was canceled with 'subCancelAtPeriodEnd', 'subCanceledAt' will still reflect the date of the initial cancellation request, not the end of the subscription period when the subscription is automatically moved to a canceled state.
     , subCurrentPeriodEnd   :: Maybe Timestamp    -- ^ End of the current period that the subscription has been invoiced for. At the end of this period, a new invoice will be created.
     , subCurrentPeriodStart :: Maybe Timestamp    -- ^ Start of the current period that the subscription has been invoiced for
@@ -60,16 +83,39 @@ data Subscription = Subscription
     , subTrialStart         :: Maybe Timestamp    -- ^ If the subscription has a trial, the beginning of that trial.
     }
     deriving (Eq, Ord, Read, Show, Data, Typeable)
-$(deriveSafeCopy 0 'base ''Subscription)
+
+$(deriveSafeCopy 1 'extension ''Subscription)
+
+instance Migrate Subscription where
+     type MigrateFrom Subscription = Subscription_0
+     migrate (Subscription_0{..}) =
+         Subscription
+         { subSubscriptionId     = SubscriptionId ""
+         , subCancelAtPeriodEnd  = subCancelAtPeriodEnd_0
+         , subCustomerId         = subCustomerId_0
+         , subPlan               = subPlan_0
+         , subQuantity           = subQuantity_0
+         , subStart              = subStart_0
+         , subStatus             = subStatus_0
+         , subAppFeePercent      = Nothing
+         , subCancelledAt        = subCancelledAt_0
+         , subCurrentPeriodEnd   = subCurrentPeriodEnd_0
+         , subCurrentPeriodStart = subCurrentPeriodStart_0
+         , subEndedAt            = subEndedAt_0
+         , subTrialEnd           = subTrialEnd_0
+         , subTrialStart         = subTrialStart_0
+         }
 
 instance FromJSON Subscription where
     parseJSON (Object obj) =
-        Subscription <$> obj .: "cancel_at_period_end"
+        Subscription <$> obj .: "id"
+                     <*> obj .: "cancel_at_period_end"
                      <*> obj .: "customer"
                      <*> obj .: "plan"
                      <*> obj .: "quantity"
                      <*> obj .: "start"
                      <*> obj .: "status"
+                     <*> obj .: "application_fee_percent"
                      <*> obj .: "canceled_at"
                      <*> obj .: "current_period_end"
                      <*> obj .: "current_period_start"
