@@ -8,6 +8,7 @@ module Stripe.HttpConduit where
 
 import Control.Monad.Trans (liftIO)
 import Control.Monad.Trans.Control
+import Control.Monad.Trans.Resource
 import Data.Aeson          (FromJSON, eitherDecode')
 import Data.Conduit
 import Data.Maybe          (fromJust)
