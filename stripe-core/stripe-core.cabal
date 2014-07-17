@@ -21,7 +21,7 @@ Library
                        Stripe.Subscription
                        Stripe.Token
   Build-Depends:       base,
-                       aeson                >= 0.6 && < 0.8,
+                       aeson                >= 0.6 && < 0.9,
                        bytestring           >= 0.9 && < 0.11,
                        http-types           == 0.8.*,
                        monad-control        == 0.3.*,
