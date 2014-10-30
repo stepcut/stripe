@@ -23,7 +23,7 @@ import Data.Aeson          (FromJSON(..), Value(..), (.:))
 import Data.ByteString     (ByteString)
 import Data.Data           (Data, Typeable)
 import Data.Maybe          (catMaybes)
-import Data.SafeCopy       (SafeCopy, base, deriveSafeCopy)
+import Data.SafeCopy       (SafeCopy(..), base, contain, deriveSafeCopy, safeGet, safePut)
 import           Data.Text          as Text (Text, unpack)
 import qualified Data.Text.Encoding as Text
 import Stripe.Core
@@ -73,7 +73,13 @@ cardInfoPairs (CardInfo{..}) =
 --
 -- see: 'createCardToken'
 newtype CardTokenId = CardTokenId { unCardTokenId :: Text }
-    deriving (Eq, Ord, Read, Show, Data, Typeable, SafeCopy)
+    deriving (Eq, Ord, Read, Show, Data, Typeable)
+
+instance SafeCopy CardTokenId where
+    kind = base
+    getCopy = contain $ (CardTokenId . Text.decodeUtf8) <$> safeGet
+    putCopy = contain . safePut . Text.encodeUtf8 . unCardTokenId
+    errorTypeName _ = "Stripe.Token.CardTokenId"
 
 -- | a single use token that can be used instead of a 'Card'. Can be
 -- safely embedded in downloadable applications like iPhone and

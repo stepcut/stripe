@@ -29,7 +29,7 @@ import Control.Monad       (mzero)
 import Data.Aeson          (FromJSON(..), Value(..), (.:))
 import Data.Data           (Data, Typeable)
 import Data.Maybe          (catMaybes)
-import Data.SafeCopy       (SafeCopy, base, deriveSafeCopy)
+import Data.SafeCopy       (SafeCopy(..), base, contain, deriveSafeCopy, safeGet, safePut)
 import           Data.Text          as Text (Text, unpack)
 import qualified Data.Text.Encoding as Text
 import Stripe.Core
@@ -42,11 +42,23 @@ import Stripe.Plan         (Plan)
 
 -- | unique identifier for an 'Invoice'
 newtype InvoiceId = InvoiceId { unInvoiceId :: Text }
-    deriving (Eq, Ord, Read, Show, Data, Typeable, SafeCopy, FromJSON)
+    deriving (Eq, Ord, Read, Show, Data, Typeable, FromJSON)
+
+instance SafeCopy InvoiceId where
+    kind = base
+    getCopy = contain $ (InvoiceId . Text.decodeUtf8) <$> safeGet
+    putCopy = contain . safePut . Text.encodeUtf8 . unInvoiceId
+    errorTypeName _ = "Stripe.Invoice.InvoiceId"
 
 -- | unique identifier for an 'InvoiceItem'
 newtype InvoiceItemId = InvoiceItemId { unInvoiceItemId :: Text }
-    deriving (Eq, Ord, Read, Show, Data, Typeable, SafeCopy, FromJSON)
+    deriving (Eq, Ord, Read, Show, Data, Typeable, FromJSON)
+
+instance SafeCopy InvoiceItemId where
+    kind = base
+    getCopy = contain $ (InvoiceItemId . Text.decodeUtf8) <$> safeGet
+    putCopy = contain . safePut . Text.encodeUtf8 . unInvoiceItemId
+    errorTypeName _ = "Stripe.Invoice.InvoiceItemId"
 
 -- | Sometimes you want to add a charge or credit to a customer but
 -- only actually charge the customer's card at the end of a regular
@@ -79,7 +91,13 @@ instance FromJSON InvoiceItem where
     parseJSON _ = mzero
 
 newtype InvoiceProrationId = InvoiceProrationId { unInvoiceProrationId :: Text }
-    deriving (Eq, Ord, Read, Show, Data, Typeable, SafeCopy, FromJSON)
+    deriving (Eq, Ord, Read, Show, Data, Typeable, FromJSON)
+
+instance SafeCopy InvoiceProrationId where
+    kind = base
+    getCopy = contain $ (InvoiceProrationId . Text.decodeUtf8) <$> safeGet
+    putCopy = contain . safePut . Text.encodeUtf8 . unInvoiceProrationId
+    errorTypeName _ = "Stripe.Invoice.InvoiceProrationId"
 
 data InvoiceProration = InvoiceProration
     { invoiceProrationId          :: InvoiceProrationId

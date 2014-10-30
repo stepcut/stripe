@@ -14,7 +14,7 @@ import Control.Monad       (mzero)
 import Data.Aeson          (FromJSON(..), Value(..), (.:))
 import Data.Data           (Data, Typeable)
 import Data.Maybe          (catMaybes)
-import Data.SafeCopy       (SafeCopy, base, deriveSafeCopy)
+import Data.SafeCopy       (SafeCopy(..), base, contain, deriveSafeCopy, safeGet, safePut)
 import           Data.Text          as Text (Text, unpack)
 import qualified Data.Text.Encoding as Text
 import Stripe.Core
@@ -26,7 +26,13 @@ import Stripe.Core
 
 -- | an unique id which identifies a 'Plan'
 newtype PlanId = PlanId { unPlanId :: Text }
-    deriving (Eq, Ord, Read, Show, Data, Typeable, SafeCopy, FromJSON)
+    deriving (Eq, Ord, Read, Show, Data, Typeable, FromJSON)
+
+instance SafeCopy PlanId where
+    kind = base
+    getCopy = contain $ (PlanId . Text.decodeUtf8) <$> safeGet
+    putCopy = contain . safePut . Text.encodeUtf8 . unPlanId
+    errorTypeName _ = "Stripe.Plan.PlanId"
 
 -- | Frequency that a subscription should be billed
 data Interval

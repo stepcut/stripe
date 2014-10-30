@@ -13,7 +13,7 @@ import Control.Monad       (mzero)
 import Data.Aeson          (FromJSON(..), Value(..), (.:))
 import Data.Data           (Data, Typeable)
 import Data.Maybe          (catMaybes)
-import Data.SafeCopy       (Migrate(..), SafeCopy, base, deriveSafeCopy, extension)
+import Data.SafeCopy       (Migrate(..), SafeCopy(..), base, contain, deriveSafeCopy, extension, safeGet, safePut)
 import           Data.Text          as Text (Text, unpack)
 import qualified Data.Text.Encoding as Text
 import Stripe.Core
@@ -36,7 +36,13 @@ data SubscriptionStatus
 $(deriveSafeCopy 0 'base ''SubscriptionStatus)
 
 newtype SubscriptionId = SubscriptionId { unSubscriptionId :: Text }
-    deriving (Eq, Ord, Read, Show, Data, Typeable, SafeCopy, FromJSON)
+    deriving (Eq, Ord, Read, Show, Data, Typeable, FromJSON)
+
+instance SafeCopy SubscriptionId where
+    kind = base
+    getCopy = contain $ (SubscriptionId . Text.decodeUtf8) <$> safeGet
+    putCopy = contain . safePut . Text.encodeUtf8 . unSubscriptionId
+    errorTypeName _ = "Stripe.Subscription.SubscriptionId"
 
 instance FromJSON SubscriptionStatus where
     parseJSON (String str)

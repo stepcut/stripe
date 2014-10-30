@@ -14,10 +14,10 @@ import Control.Monad       (mzero)
 import Data.Aeson          (FromJSON(..), Value(..), (.:))
 import Data.Data           (Data, Typeable)
 import Data.Maybe          (catMaybes)
-import Data.SafeCopy       (SafeCopy, base, deriveSafeCopy)
+import Data.SafeCopy       (SafeCopy(..), base, contain, deriveSafeCopy, safeGet, safePut)
 import           Data.Text          as Text (Text, unpack)
 import qualified Data.Text.Encoding as Text
-import Stripe.Core         
+import Stripe.Core
 
 ------------------------------------------------------------------------------
 -- Coupon
@@ -25,7 +25,13 @@ import Stripe.Core
 
 -- | id uniquely identifying a 'Coupon'
 newtype CouponId = CouponId { unCouponId :: Text }
-    deriving (Eq, Ord, Read, Show, Data, Typeable, SafeCopy, FromJSON)
+    deriving (Eq, Ord, Read, Show, Data, Typeable, FromJSON)
+
+instance SafeCopy CouponId where
+    kind = base
+    getCopy = contain $ (CouponId . Text.decodeUtf8) <$> safeGet
+    putCopy = contain . safePut . Text.encodeUtf8 . unCouponId
+    errorTypeName _ = "Stripe.Coupon.CouponId"
 
 -- | how long a 'Discount' is in effect
 data Duration

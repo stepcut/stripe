@@ -6,10 +6,10 @@ import Control.Monad       (mzero)
 import Data.Aeson          (FromJSON(..), Value(..), (.:))
 import Data.Data           (Data, Typeable)
 import Data.Maybe          (catMaybes)
-import Data.SafeCopy       (SafeCopy, base, deriveSafeCopy)
+import Data.SafeCopy       (SafeCopy(..), base, contain, deriveSafeCopy, safeGet, safePut)
 import           Data.Text          as Text (Text, unpack)
 import qualified Data.Text.Encoding as Text
-import Stripe.Core         
+import Stripe.Core
 import Stripe.Token
 
 --- | A fee associate with a 'Charge'
@@ -37,12 +37,19 @@ instance FromJSON FeeDetail where
 ------------------------------------------------------------------------------
 
 newtype ChargeId = ChargeId { unChargeId :: Text }
-    deriving (Eq, Ord, Read, Show, Data, Typeable, SafeCopy, FromJSON)
-             
+    deriving (Eq, Ord, Read, Show, Data, Typeable, FromJSON)
+
+instance SafeCopy ChargeId where
+    kind = base
+    getCopy = contain $ (ChargeId . Text.decodeUtf8) <$> safeGet
+    putCopy = contain . safePut . Text.encodeUtf8 . unChargeId
+    errorTypeName _ = "Stripe.Charge.ChargeId"
+
 data Charge = Charge
     { chargeId             :: ChargeId    -- ^ charge id
     , chargeLivemode       :: Bool        -- ^ livemode
     , chargeAmount         :: Cents       -- ^ amount
+--    , chargeCaptured       :: Bool        -- ^ If the charge was created without capturing, this boolean represents whether or not it is still uncaptured or has since been captured
     , chargeCard           :: Card        -- ^ card
     , chargeCreated        :: Timestamp   -- ^ created
     , chargeCurrency       :: Currency    -- ^ currency
@@ -51,7 +58,7 @@ data Charge = Charge
     , chargeFeeDetails     :: [FeeDetail] -- ^ list of fees
     , chargePaid           :: Bool        -- ^ paid
     , chargeRefunded       :: Bool        -- ^ false for partial refund
-    , chargeAmountRefunded :: Maybe Cents 
+    , chargeAmountRefunded :: Maybe Cents
     , chargeCustomer       :: Maybe CustomerId
     , chargeDescription    :: Maybe Text
     , chargeFailureMessage :: Maybe Text
@@ -96,10 +103,10 @@ instance FromJSON Charges where
 -- | Returns a list of charges you've previously created. The charges
 -- are returned in sorted order, with the most recent charges
 -- appearing first.
-getCharges :: Maybe Count      -- ^ limit number of charges returned. default is 10. 
+getCharges :: Maybe Count      -- ^ limit number of charges returned. default is 10.
            -> Maybe Offset     -- ^ offset into list of charges. default is 0.
            -> Maybe CustomerId -- ^ only return charges for this customer id
-           -> StripeReq Charges 
+           -> StripeReq Charges
 getCharges mCount mOffset mCustomerId =
     StripeReq { srUrl         = "https://api.stripe.com/v1/charges"
               , srQueryString = params
@@ -119,7 +126,7 @@ data ChargeTo
 $(deriveSafeCopy 0 'base ''ChargeTo)
 
 createCharge :: Cents  -- ^ amount
-             -> Currency 
+             -> Currency
              -> ChargeTo
              -> Maybe Text -- ^ description
              -> StripeReq Charge
@@ -132,7 +139,7 @@ createCharge amount currency chargeTo description =
       params =
                [ ("amount", showBS amount)
                , ("currency", Text.encodeUtf8 currency)
-               ] ++ 
+               ] ++
                (case chargeTo of
                    (CS (CustomerId  ci)) ->
                        [ ("customer", Text.encodeUtf8 ci)]

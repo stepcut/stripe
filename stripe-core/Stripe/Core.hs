@@ -10,9 +10,11 @@ import Data.Aeson
 import qualified Data.HashMap.Strict as HashMap
 import Data.Monoid         (mconcat)
 import Data.Ratio          ((%))
-import Data.SafeCopy       (SafeCopy, base, deriveSafeCopy)
+import Data.SafeCopy       (SafeCopy(..), base, contain, deriveSafeCopy, safePut, safeGet)
+import qualified Data.Serialize as S
 import Data.String         (fromString)
 import Data.Text           (Text)
+import qualified Data.Text.Encoding as Text
 import Numeric             (fromRat, showFFloat)
 
 -- | convert a lazy 'ByteString' to a strict 'ByteString'
@@ -95,7 +97,12 @@ instance (FromJSON a) => FromJSON (List a) where
 
 -- | unique key used to access the Stripe API
 newtype ApiKey = ApiKey { unApiKey :: ByteString }
-    deriving (Eq, Ord, Read, Show, Data, Typeable, SafeCopy)
+    deriving (Eq, Ord, Read, Show, Data, Typeable)
+
+instance SafeCopy ApiKey where
+    getCopy = contain (fmap ApiKey S.get)
+    putCopy = contain . S.put . unApiKey
+    errorTypeName _ = "Stripe.Stripe.ApiKey"
 
 ------------------------------------------------------------------------------
 -- Errors
@@ -187,7 +194,13 @@ instance FromJSON Check where
 --
 -- see also: 'Card'
 newtype CardId = CardId { unCardId :: Text }
-    deriving (Eq, Ord, Read, Show, Data, Typeable, SafeCopy, FromJSON)
+    deriving (Eq, Ord, Read, Show, Data, Typeable, FromJSON)
+
+instance SafeCopy CardId where
+    kind = base
+    getCopy = contain $ (CardId . Text.decodeUtf8) <$> safeGet
+    putCopy = contain . safePut . Text.encodeUtf8 . unCardId
+    errorTypeName _ = "Stripe.Core.CardId"
 
 -- | describes the card used to make a 'Charge'
 data Card = Card
@@ -244,4 +257,11 @@ showCentsAsDollars cents =
 --
 -- see also: 'Customer', 'createCustomer'
 newtype CustomerId = CustomerId { unCustomerId :: Text }
-    deriving (Eq, Ord, Read, Show, Data, Typeable, SafeCopy, FromJSON)
+    deriving (Eq, Ord, Read, Show, Data, Typeable, FromJSON)
+
+instance SafeCopy CustomerId where
+    kind = base
+    getCopy = contain $ (CustomerId . Text.decodeUtf8) <$> safeGet
+    putCopy = contain . safePut . Text.encodeUtf8 . unCustomerId
+    errorTypeName _ = "Stripe.Account.CustomerId"
+

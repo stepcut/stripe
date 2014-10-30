@@ -10,17 +10,24 @@ import Control.Monad       (mzero)
 import Data.Aeson          (FromJSON(..), Value(..), (.:))
 import Data.Data           (Data, Typeable)
 import Data.Maybe          (catMaybes)
-import Data.SafeCopy       (SafeCopy, base, deriveSafeCopy)
+import Data.SafeCopy       (SafeCopy(..), base, contain, deriveSafeCopy, safeGet, safePut)
 import           Data.Text          as Text (Text, unpack)
 import qualified Data.Text.Encoding as Text
-import Stripe.Core         
+import Stripe.Core
 
 ------------------------------------------------------------------------------
 -- Account
 ------------------------------------------------------------------------------
 
 newtype AccountId = AccountId { unAccountId :: Text }
-    deriving (Eq, Ord, Read, Show, Data, Typeable, SafeCopy, FromJSON)
+    deriving (Eq, Ord, Read, Show, Data, Typeable, FromJSON)
+
+instance SafeCopy AccountId where
+    kind = base
+    getCopy = contain $ (AccountId . Text.decodeUtf8) <$> safeGet
+    putCopy = contain . safePut . Text.encodeUtf8 . unAccountId
+    errorTypeName _ = "Stripe.Account.AccountId"
+
 
 -- | This is an object representing your Stripe account. You can
 -- retrieve it to see properties on the account like its current
